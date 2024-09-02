@@ -397,7 +397,9 @@ public class ManualAdjudicationServiceImpl implements ManualAdjudicationService 
 		}
 		String requestId = UUID.randomUUID().toString();
 		mar.setRequestId(requestId);
-		regProcLogger.info("Request : " + JsonUtils.javaObjectToJsonString(mar));
+		regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+				refId, "Manual Adjudication Request : " + JsonUtils.javaObjectToJsonString(mar));
+		//regProcLogger.info("Request : " + JsonUtils.javaObjectToJsonString(mar));
 		manualVerificationUpdateUtility.updateManualVerificationEntityRID(mves, requestId);
 		if (messageFormat.equalsIgnoreCase(TEXT_MESSAGE))
 			mosipQueueManager.send(queue, JsonUtils.javaObjectToJsonString(mar), mvRequestAddress, mvRequestMessageTTL);

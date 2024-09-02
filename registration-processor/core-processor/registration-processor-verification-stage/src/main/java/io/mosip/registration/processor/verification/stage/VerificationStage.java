@@ -213,8 +213,10 @@ public class VerificationStage extends MosipVerticleAPIManager {
 				TextMessage textMessage = (TextMessage) message;
 				response = textMessage.getText();
 			}
+			/*regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REFERENCEID.toString(),
+					"Response received from mv system", response);*/
 			regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REFERENCEID.toString(),
-					"Response received from mv system", response);
+					"Manual Adjudication Response : ", response);
 			if (response == null) {
 				regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.APPLICATIONID.toString(),
 						PlatformErrorMessages.RPR_INVALID_MESSSAGE.getCode(), PlatformErrorMessages.RPR_INVALID_MESSSAGE.getMessage());
