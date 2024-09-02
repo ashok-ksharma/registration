@@ -98,6 +98,8 @@ public class ABISHandlerUtil {
 				for (AbisResponseDetDto abisResponseDetDto : abisResponseDetDtoList) {
 					machedRefIds.add(abisResponseDetDto.getMatchedBioRefId());
 				}
+				regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+						registrationId, "machedRefIds : " + machedRefIds);
 				if (!CollectionUtils.isEmpty(machedRefIds)) {
 					List<String> matchedRegIds = packetInfoDao.getAbisRefRegIdsByMatchedRefIds(machedRefIds);
 					if (!CollectionUtils.isEmpty(matchedRegIds)) {
