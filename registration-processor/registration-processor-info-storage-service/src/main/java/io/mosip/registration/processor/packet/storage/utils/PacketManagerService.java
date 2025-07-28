@@ -227,7 +227,11 @@ public class PacketManagerService extends PriorityBasedPacketManagerService {
                 throw new PacketManagerNonRecoverableException(errorDTO.getErrorCode(), errorDTO.getMessage());
             throw new PacketManagerException(errorDTO.getErrorCode(), errorDTO.getMessage());
         }
+	regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                LoggerFileConstant.REGISTRATIONID.toString(), id, "getBiometric Response : " + response.getResponse());    
         if (response.getResponse() != null) {
+	    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                    LoggerFileConstant.REGISTRATIONID.toString(), id, "getBiometric javaObjectToJsonString : " + JsonUtils.javaObjectToJsonString(response.getResponse()));
             BiometricRecord biometricRecord = objectMapper.readValue(JsonUtils.javaObjectToJsonString(response.getResponse()), BiometricRecord.class);
             return biometricRecord;
         }
