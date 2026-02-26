@@ -232,7 +232,7 @@ public class PacketValidatorImplTest {
 		doNothing().when(biometricsXSDValidator).validateXSD(any());
 		when(packetManagerService.getBiometricsByMappingJsonKey(anyString(), any(), any(), any()))
 				.thenReturn(biometricRecord);
-		when(applicantDocumentValidation.validateDocument(any(), any())).thenReturn(true);
+		when(applicantDocumentValidation.validateDocument(any(), any(), any())).thenReturn(true);
 
 		JSONArray jsonArray = new JSONArray();
 		org.json.JSONObject jsonObject = new org.json.JSONObject();
@@ -266,7 +266,7 @@ public class PacketValidatorImplTest {
 			JsonProcessingException, RegistrationProcessorCheckedException, IOException, PacketManagerException,
 			BiometricSignatureValidationException, JSONException {
 		
-		when(applicantDocumentValidation.validateDocument(any(), any())).thenReturn(false);
+		when(applicantDocumentValidation.validateDocument(any(), any(), any())).thenReturn(false);
 		assertFalse(PacketValidator.validate("123456789", "NEW", packetValidationDto));
 	}
 
@@ -274,7 +274,7 @@ public class PacketValidatorImplTest {
 	public void testdocumentValidationFailed() throws PacketValidatorException, ApisResourceAccessException,
 			JsonProcessingException, RegistrationProcessorCheckedException, IOException, PacketManagerException,
 			BiometricSignatureValidationException, JSONException {
-		when(applicantDocumentValidation.validateDocument(any(), any())).thenReturn(false);
+		when(applicantDocumentValidation.validateDocument(any(), any(), any())).thenReturn(false);
 		assertFalse(PacketValidator.validate("123456789", "NEW", packetValidationDto));
 	}
 
