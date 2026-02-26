@@ -199,7 +199,9 @@ public class PacketValidateProcessor {
 			Map<String, String> metaInfo = packetManagerService.getMetaInfo(
 					registrationStatusDto.getRegistrationId(), registrationStatusDto.getRegistrationType(), ProviderStageName.PACKET_VALIDATOR);
 			setPacketCreatedDateTime(registrationStatusDto, metaInfo);
-			boolean isValidSupervisorStatus = isValidSupervisorStatus(object);
+			// Fetch regEntity once and reuse for isValidSupervisorStatus and sendNotification
+			SyncRegistrationEntity regEntity = syncRegistrationService.findByWorkflowInstanceId(object.getWorkflowInstanceId());
+			boolean isValidSupervisorStatus = isValidSupervisorStatus(regEntity);
 			if (isValidSupervisorStatus) {
 				Boolean isValid = compositePacketValidator.validate(object.getRid(),
 						registrationStatusDto.getRegistrationType(), packetValidationDto, metaInfo);
@@ -282,7 +284,6 @@ public class PacketValidateProcessor {
 			}
 			object.setInternalError(Boolean.FALSE);
 			registrationStatusDto.setUpdatedBy(USER);
-			SyncRegistrationEntity regEntity = syncRegistrationService.findByWorkflowInstanceId(object.getWorkflowInstanceId());
 			sendNotification(regEntity, registrationStatusDto, packetValidationDto.isTransactionSuccessful(),isValidSupervisorStatus);
 		} catch (PacketManagerNonRecoverableException exc) {
 			registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
@@ -495,8 +496,7 @@ public class PacketValidateProcessor {
 		}
 	}
 
-		private boolean isValidSupervisorStatus(MessageDTO messageDTO) {
-			SyncRegistrationEntity regEntity = syncRegistrationService.findByWorkflowInstanceId(messageDTO.getWorkflowInstanceId());
+		private boolean isValidSupervisorStatus(SyncRegistrationEntity regEntity) {
 			if (regEntity.getSupervisorStatus().equalsIgnoreCase(APPROVED)) {
 				return true;
 
