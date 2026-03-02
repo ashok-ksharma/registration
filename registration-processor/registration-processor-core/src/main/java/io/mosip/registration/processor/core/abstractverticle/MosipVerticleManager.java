@@ -189,10 +189,10 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 		mosipEventBus.consumeAndSend(fromAddress, toAddress, (msg, handler) -> {
 			logger.debug("consumeAndSend received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			WorkerPoolMonitor.requestArrived(stageName);
+			final boolean wasQueued = WorkerPoolMonitor.requestArrived(stageName);
 			vertx.executeBlocking(future -> {
 				MessageDTO messageDTO =new MessageDTO();
-				WorkerPoolMonitor.threadAcquired(stageName);
+				WorkerPoolMonitor.threadAcquired(stageName, wasQueued);
 				try {
 				MDC.setContextMap(mdc);
 				JsonObject jsonObject = (JsonObject) msg.getBody();
@@ -262,10 +262,10 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 		mosipEventBus.consume(fromAddress, (msg, handler) -> {
 			logger.debug("Received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			WorkerPoolMonitor.requestArrived(stageName);
+			final boolean wasQueued = WorkerPoolMonitor.requestArrived(stageName);
 			vertx.executeBlocking(future -> {
 				MessageDTO messageDTO=new MessageDTO();
-				WorkerPoolMonitor.threadAcquired(stageName);
+				WorkerPoolMonitor.threadAcquired(stageName, wasQueued);
 				try {
 				MDC.setContextMap(mdc);
 				JsonObject jsonObject = (JsonObject) msg.getBody();

@@ -31,10 +31,12 @@ public class WorkerPoolMonitor {
     /**
      * Called when a request arrives (before worker thread is assigned).
      * If all workers are busy, request is queued.
+     * 
+     * @return true if request was queued (pool was full), false otherwise
      */
-    public static void requestArrived(String stageName) {
+    public static boolean requestArrived(String stageName) {
         StageWorkerMetrics metrics = stageMetrics.get(stageName);
-        if (metrics == null) return;
+        if (metrics == null) return false;
 
         int activeWorkers = metrics.getActiveCount();
         int poolSize = metrics.getWorkerPoolSize();
@@ -44,18 +46,21 @@ public class WorkerPoolMonitor {
             metrics.incrementTotalQueuedCount();
             logger.warn("WORKER_POOL_QUEUE: Stage={}, WorkersInUse={}/{}, QueuedRequests={}",
                     stageName, activeWorkers, poolSize, queueDepth);
+            return true;
         }
+        return false;
     }
 
     /**
      * Called when a worker thread starts processing.
+     * 
+     * @param wasQueued true if this request was queued when it arrived
      */
-    public static void threadAcquired(String stageName) {
+    public static void threadAcquired(String stageName, boolean wasQueued) {
         StageWorkerMetrics metrics = stageMetrics.get(stageName);
         if (metrics == null) return;
 
-        int queuedCount = metrics.getQueuedCount();
-        if (queuedCount > 0) {
+        if (wasQueued) {
             metrics.decrementQueuedCount();
         }
 
