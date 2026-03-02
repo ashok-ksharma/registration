@@ -1,5 +1,7 @@
 package io.mosip.registration.processor.core.monitoring;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import io.micrometer.core.instrument.Gauge;
@@ -7,32 +9,51 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.registration.processor.core.logger.RegProcessorLogger;
 import io.vertx.core.Vertx;
+import io.vertx.core.WorkerExecutor;
 import io.vertx.micrometer.backends.BackendRegistries;
 
 /**
- * Utility class for monitoring Vert.x worker pool usage.
- * Uses Vert.x Micrometer metrics for accurate thread tracking.
- * Captures ALL worker thread usage including message processing, health checks, etc.
+ * Utility class for monitoring Vert.x worker pool usage per stage.
+ * Uses named WorkerExecutor per stage to get per-stage metrics from Vert.x Micrometer.
  */
 public class WorkerPoolMonitor {
 
     private static final Logger logger = RegProcessorLogger.getLogger(WorkerPoolMonitor.class);
 
-    private static Vertx vertxInstance;
-    private static String stageName;
-    private static long periodicLoggerId = -1;
+    private static final Map<String, StageInfo> stageInfoMap = new ConcurrentHashMap<>();
+    private static Vertx primaryVertx;
+    private static long periodicTimerId = -1;
 
     private WorkerPoolMonitor() {
     }
 
     /**
-     * Register Vertx instance and stage name for periodic logging.
+     * Register a stage and create a named WorkerExecutor for it.
+     * Named pools allow Vert.x Micrometer to track metrics per stage.
      */
-    public static void registerStage(String name, Vertx vertx) {
-        if (vertxInstance == null) {
-            vertxInstance = vertx;
-            stageName = cleanStageName(name);
+    public static WorkerExecutor registerStage(String name, int poolSize, Vertx vertx) {
+        String cleanName = cleanStageName(name);
+        String poolName = "stage-pool-" + cleanName;
+        
+        WorkerExecutor executor = vertx.createSharedWorkerExecutor(poolName, poolSize);
+        stageInfoMap.put(cleanName, new StageInfo(poolName, poolSize, executor));
+        
+        if (primaryVertx == null) {
+            primaryVertx = vertx;
         }
+        
+        logger.info("WORKER_POOL_MONITOR: Registered stage={} with poolName={}, poolSize={}", 
+                cleanName, poolName, poolSize);
+        return executor;
+    }
+
+    /**
+     * Get the WorkerExecutor for a stage.
+     */
+    public static WorkerExecutor getWorkerExecutor(String stageName) {
+        String cleanName = cleanStageName(stageName);
+        StageInfo info = stageInfoMap.get(cleanName);
+        return info != null ? info.executor : null;
     }
 
     /**
@@ -46,97 +67,82 @@ public class WorkerPoolMonitor {
     }
 
     /**
-     * Start periodic logging of worker pool status.
-     * Logs every specified interval - captures ALL thread usage (messages, health checks, etc.)
-     *
-     * @param intervalSeconds interval between logs in seconds
+     * Start periodic logging of worker pool status for all stages.
      */
     public static void startPeriodicLogging(long intervalSeconds) {
-        if (vertxInstance == null) {
-            logger.warn("WORKER_POOL_MONITOR: Cannot start periodic logging - Vertx instance not registered");
+        if (primaryVertx == null) {
+            logger.warn("WORKER_POOL_MONITOR: Cannot start periodic logging - no Vertx instance registered");
             return;
         }
-        if (periodicLoggerId != -1) {
+        if (periodicTimerId != -1) {
             return;
         }
 
-        periodicLoggerId = vertxInstance.setPeriodic(TimeUnit.SECONDS.toMillis(intervalSeconds), id -> {
+        periodicTimerId = primaryVertx.setPeriodic(TimeUnit.SECONDS.toMillis(intervalSeconds), id -> {
             try {
-                logPoolStatus();
+                logAllStagesStatus();
             } catch (Exception e) {
                 logger.error("WORKER_POOL_MONITOR: Error in periodic logging", e);
             }
         });
-        logger.warn("WORKER_POOL_MONITOR: Started periodic logging every {} seconds for stage {}", intervalSeconds, stageName);
+        logger.info("WORKER_POOL_MONITOR: Started periodic logging every {} seconds", intervalSeconds);
     }
 
     /**
-     * Log warning only if requests are queued (pool is saturated).
-     * Call this from message processing paths for alert-only logging.
+     * Log pool status for each registered stage using Vert.x Micrometer metrics.
      */
-    public static void logIfQueued(String stageNameParam) {
-        MeterRegistry registry = BackendRegistries.getDefaultNow();
-        if (registry == null) return;
-
-        Double queueSize = getGaugeValue(registry, "vertx.pool.queue.size", "worker");
-        if (queueSize != null && queueSize > 0) {
-            Double inUse = getGaugeValue(registry, "vertx.pool.inUse", "worker");
-            String cleanName = cleanStageName(stageNameParam);
-            logger.warn("WORKER_POOL_QUEUE: Stage={}, WorkersInUse={}, QueuedRequests={}",
-                    cleanName,
-                    inUse != null ? inUse.intValue() : "N/A",
-                    queueSize.intValue());
-        }
-    }
-
-    /**
-     * Log pool status - captures ALL thread usage.
-     */
-    private static void logPoolStatus() {
+    private static void logAllStagesStatus() {
         MeterRegistry registry = BackendRegistries.getDefaultNow();
         if (registry == null) {
-            logger.warn("WORKER_POOL_STATUS: Stage={}, Micrometer registry not available", stageName);
+            logger.warn("WORKER_POOL_MONITOR: MeterRegistry not available");
             return;
         }
 
-        Double inUse = getGaugeValue(registry, "vertx.pool.inUse", "worker");
-        Double queueSize = getGaugeValue(registry, "vertx.pool.queue.size", "worker");
-        Double ratio = getGaugeValue(registry, "vertx.pool.ratio", "worker");
+        for (Map.Entry<String, StageInfo> entry : stageInfoMap.entrySet()) {
+            String stageName = entry.getKey();
+            StageInfo info = entry.getValue();
+            
+            double inUse = getMetricValue(registry, "vertx.pool.inUse", info.poolName);
+            double queueSize = getMetricValue(registry, "vertx.pool.queue.size", info.poolName);
+            double ratio = getMetricValue(registry, "vertx.pool.ratio", info.poolName);
+            
+            int poolSize = info.poolSize;
+            int workersInUse = (int) inUse;
+            int queued = (int) queueSize;
 
-        if (inUse == null) {
-            logger.warn("WORKER_POOL_STATUS: Stage={}, Metrics not available (inUse=null)", stageName);
-            return;
-        }
-
-        int inUseInt = inUse.intValue();
-        int queueInt = queueSize != null ? queueSize.intValue() : 0;
-        String ratioStr = ratio != null ? String.format("%.2f", ratio) : "N/A";
-
-        if (queueInt > 0) {
-            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}, QueuedRequests={}, PoolRatio={}",
-                    stageName, inUseInt, queueInt, ratioStr);
-        } else {
-            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}, QueuedRequests={}, PoolRatio={}",
-                    stageName, inUseInt, queueInt, ratioStr);
+            if (queued > 0) {
+                logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
+                        stageName, workersInUse, poolSize, queued, String.format("%.2f", ratio));
+            } else {
+                logger.info("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
+                        stageName, workersInUse, poolSize, queued, String.format("%.2f", ratio));
+            }
         }
     }
 
-    private static Double getGaugeValue(MeterRegistry registry, String metricName, String poolType) {
-        Gauge gauge = registry.find(metricName).tag("pool.type", poolType).gauge();
-        logger.debug("WORKER_POOL_GAUGE: metricName={}, tag=pool.type={}, gauge={}", metricName, poolType, gauge);
-        
-        if (gauge == null) {
-            gauge = registry.find(metricName.replace(".", "_")).tag("pool_type", poolType).gauge();
-            logger.debug("WORKER_POOL_GAUGE: metricName={}, tag=pool_type={}, gauge={}", 
-                    metricName.replace(".", "_"), poolType, gauge);
+    /**
+     * Get metric value for a specific pool name.
+     */
+    private static double getMetricValue(MeterRegistry registry, String metricName, String poolName) {
+        Gauge gauge = registry.find(metricName)
+                .tag("pool.type", "worker")
+                .tag("pool.name", poolName)
+                .gauge();
+        return gauge != null ? gauge.value() : 0.0;
+    }
+
+    /**
+     * Info about a stage's worker pool.
+     */
+    private static class StageInfo {
+        final String poolName;
+        final int poolSize;
+        final WorkerExecutor executor;
+
+        StageInfo(String poolName, int poolSize, WorkerExecutor executor) {
+            this.poolName = poolName;
+            this.poolSize = poolSize;
+            this.executor = executor;
         }
-        if (gauge == null) {
-            gauge = registry.find(metricName).tag("pool_type", poolType).gauge();
-            logger.debug("WORKER_POOL_GAUGE: metricName={}, tag=pool_type={}, gauge={}", metricName, poolType, gauge);
-        }
-        
-        Double value = gauge != null ? gauge.value() : null;
-        logger.warn("WORKER_POOL_GAUGE: metricName={}, value={}", metricName, value);
-        return value;
     }
 }

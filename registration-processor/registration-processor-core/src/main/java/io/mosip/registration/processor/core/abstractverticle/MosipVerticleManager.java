@@ -48,6 +48,7 @@ import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.eventbus.EventBusOptions;
+import io.vertx.core.WorkerExecutor;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -163,7 +164,7 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 
 		try {
 			Vertx vert = eventBus.get();
-			WorkerPoolMonitor.registerStage(stageName, vert);
+			WorkerPoolMonitor.registerStage(stageName, instanceNumber, vert);
 			WorkerPoolMonitor.startPeriodicLogging(30);
 			mosipEventBus = mosipEventBusFactory.getEventBus(vert, getEventBusType(), getPropertyPrefix());
 		} catch (InterruptedException | ExecutionException | UnsupportedEventBusTypeException e) {
@@ -187,11 +188,12 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 			return;
 		}
 		String stageName = this.getClass().getSimpleName();
+		WorkerExecutor executor = WorkerPoolMonitor.getWorkerExecutor(stageName);
 		mosipEventBus.consumeAndSend(fromAddress, toAddress, (msg, handler) -> {
 			logger.debug("consumeAndSend received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			WorkerPoolMonitor.logIfQueued(stageName);
-			vertx.executeBlocking(future -> {
+			WorkerExecutor workerExecutor = executor != null ? executor : vertx.createSharedWorkerExecutor("default-pool");
+			workerExecutor.executeBlocking(future -> {
 				MessageDTO messageDTO =new MessageDTO();
 				try {
 				MDC.setContextMap(mdc);
@@ -256,11 +258,12 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 	public void consume(MosipEventBus mosipEventBus, MessageBusAddress fromAddress,
 			long messageExpiryTimeLimit) {
 		String stageName = this.getClass().getSimpleName();
+		WorkerExecutor executor = WorkerPoolMonitor.getWorkerExecutor(stageName);
 		mosipEventBus.consume(fromAddress, (msg, handler) -> {
 			logger.debug("Received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			WorkerPoolMonitor.logIfQueued(stageName);
-			vertx.executeBlocking(future -> {
+			WorkerExecutor workerExecutor = executor != null ? executor : vertx.createSharedWorkerExecutor("default-pool");
+			workerExecutor.executeBlocking(future -> {
 				MessageDTO messageDTO=new MessageDTO();
 				try {
 				MDC.setContextMap(mdc);
