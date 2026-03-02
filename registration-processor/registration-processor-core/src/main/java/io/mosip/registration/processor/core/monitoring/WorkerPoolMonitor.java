@@ -31,8 +31,18 @@ public class WorkerPoolMonitor {
     public static void registerStage(String name, Vertx vertx) {
         if (vertxInstance == null) {
             vertxInstance = vertx;
-            stageName = name;
+            stageName = cleanStageName(name);
         }
+    }
+
+    /**
+     * Remove Spring CGLIB proxy suffix from stage name.
+     */
+    private static String cleanStageName(String name) {
+        if (name != null && name.contains("$$")) {
+            return name.substring(0, name.indexOf("$$"));
+        }
+        return name;
     }
 
     /**
@@ -64,18 +74,17 @@ public class WorkerPoolMonitor {
      * Log warning only if requests are queued (pool is saturated).
      * Call this from message processing paths for alert-only logging.
      */
-    public static void logIfQueued(String stageName) {
+    public static void logIfQueued(String stageNameParam) {
         MeterRegistry registry = BackendRegistries.getDefaultNow();
         if (registry == null) return;
 
         Double queueSize = getGaugeValue(registry, "vertx.pool.queue.size", "worker");
         if (queueSize != null && queueSize > 0) {
             Double inUse = getGaugeValue(registry, "vertx.pool.inUse", "worker");
-            Double poolSize = getGaugeValue(registry, "vertx.pool.size", "worker");
-            logger.warn("WORKER_POOL_QUEUE: Stage={}, WorkersInUse={}/{}, QueuedRequests={}",
-                    stageName,
+            String cleanName = cleanStageName(stageNameParam);
+            logger.warn("WORKER_POOL_QUEUE: Stage={}, WorkersInUse={}, QueuedRequests={}",
+                    cleanName,
                     inUse != null ? inUse.intValue() : "N/A",
-                    poolSize != null ? poolSize.intValue() : "N/A",
                     queueSize.intValue());
         }
     }
@@ -91,25 +100,24 @@ public class WorkerPoolMonitor {
         }
 
         Double inUse = getGaugeValue(registry, "vertx.pool.inUse", "worker");
-        Double poolSize = getGaugeValue(registry, "vertx.pool.size", "worker");
         Double queueSize = getGaugeValue(registry, "vertx.pool.queue.size", "worker");
         Double ratio = getGaugeValue(registry, "vertx.pool.ratio", "worker");
 
-        if (inUse == null || poolSize == null) {
-            logger.warn("WORKER_POOL_STATUS: Stage={}, Metrics not available (inUse={}, poolSize={})", 
-                    stageName, inUse, poolSize);
+        if (inUse == null) {
+            logger.warn("WORKER_POOL_STATUS: Stage={}, Metrics not available (inUse=null)", stageName);
             return;
         }
 
-        if (queueSize != null && queueSize > 0) {
-            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
-                    stageName, inUse.intValue(), poolSize.intValue(), queueSize.intValue(),
-                    ratio != null ? String.format("%.2f", ratio) : "N/A");
+        int inUseInt = inUse.intValue();
+        int queueInt = queueSize != null ? queueSize.intValue() : 0;
+        String ratioStr = ratio != null ? String.format("%.2f", ratio) : "N/A";
+
+        if (queueInt > 0) {
+            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}, QueuedRequests={}, PoolRatio={}",
+                    stageName, inUseInt, queueInt, ratioStr);
         } else {
-            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
-                    stageName, inUse.intValue(), poolSize.intValue(),
-                    queueSize != null ? queueSize.intValue() : 0,
-                    ratio != null ? String.format("%.2f", ratio) : "N/A");
+            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}, QueuedRequests={}, PoolRatio={}",
+                    stageName, inUseInt, queueInt, ratioStr);
         }
     }
 
