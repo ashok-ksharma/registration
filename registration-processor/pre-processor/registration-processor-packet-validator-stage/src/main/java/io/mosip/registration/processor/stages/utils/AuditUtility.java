@@ -5,6 +5,8 @@ import java.lang.reflect.Field;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.Supplier;
 
 import io.mosip.kernel.core.exception.ExceptionUtils;
 import io.mosip.registration.processor.core.constant.ProviderStageName;
@@ -73,10 +75,10 @@ public class AuditUtility {
 					"", "AuditUtility::saveAuditDetails()::entry");
 			List<FieldResponseDto> audits = packetManagerService.getAudits(registrationId, process, ProviderStageName.PACKET_VALIDATOR);
 			if (CollectionUtils.isNotEmpty(audits)) {
-				// Fire-and-forget: submit audit requests without blocking worker thread
-				audits.forEach(audit -> {
+				audits.parallelStream().forEach(audit -> {
 					AsyncRequestDTO request = buildRequest(audit);
-					restHelper.requestAsync(request);
+					Supplier<Object> dto = restHelper.requestAsync(request);
+					dto.get();
 				});
 			}
 		} catch (RuntimeException e) {

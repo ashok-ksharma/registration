@@ -3,12 +3,9 @@ package io.mosip.registration.processor.stages.validator.impl;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.kernel.core.util.DateUtils2;
@@ -77,7 +74,6 @@ public class BiometricsSignatureValidator {
 		}
 
 		List<BIR> birs = biometricRecord.getSegments();
-		List<String> tokensToValidate = new ArrayList<>();
 
 		for (BIR bir : birs) {
 			HashMap<String, String> othersInfo = bir.getOthers();
@@ -99,39 +95,10 @@ public class BiometricsSignatureValidator {
 				continue;
 			}
 
-			tokensToValidate.add(BiometricsSignatureHelper.extractJWTToken(bir));
+			String token = BiometricsSignatureHelper.extractJWTToken(bir);
+			validateJWTToken(id, token);
 		}
 
-		// Parallelize JWT verify REST calls to reduce total time
-		if (!tokensToValidate.isEmpty()) {
-			List<CompletableFuture<Void>> futures = tokensToValidate.stream()
-					.map(token -> CompletableFuture.runAsync(() -> {
-						try {
-							validateJWTToken(id, token);
-						} catch (Exception e) {
-							throw new RuntimeException(e);
-						}
-					}))
-					.toList();
-			try {
-				CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-			} catch (CompletionException ex) {
-				Throwable cause = ex.getCause();
-				if (cause instanceof RuntimeException && cause.getCause() != null) {
-					Throwable root = cause.getCause();
-					if (root instanceof BiometricSignatureValidationException) {
-						throw (BiometricSignatureValidationException) root;
-					}
-					if (root instanceof ApisResourceAccessException) {
-						throw (ApisResourceAccessException) root;
-					}
-				}
-				if (cause instanceof RuntimeException) {
-					throw (RuntimeException) cause;
-				}
-				throw new RuntimeException(cause != null ? cause : ex);
-			}
-		}
 	}
 
 	private String getRegClientVersionFromMetaInfo(String id, String process, Map<String, String> metaInfoMap)
