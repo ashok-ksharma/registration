@@ -145,7 +145,6 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 				.setEnabled(true);
 
 		String stageName = verticleName.getClass().getSimpleName();
-		WorkerPoolMonitor.registerStage(stageName, instanceNumber);
 
 		VertxOptions options = new VertxOptions().setClustered(true).setClusterManager(clusterManager)
 				.setHAEnabled(false).setWorkerPoolSize(instanceNumber)
@@ -164,6 +163,8 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 
 		try {
 			Vertx vert = eventBus.get();
+			WorkerPoolMonitor.registerStage(stageName, vert);
+			WorkerPoolMonitor.startPeriodicLogging(30);
 			mosipEventBus = mosipEventBusFactory.getEventBus(vert, getEventBusType(), getPropertyPrefix());
 		} catch (InterruptedException | ExecutionException | UnsupportedEventBusTypeException e) {
 			Thread.currentThread().interrupt();
@@ -189,17 +190,15 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 		mosipEventBus.consumeAndSend(fromAddress, toAddress, (msg, handler) -> {
 			logger.debug("consumeAndSend received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			final boolean wasQueued = WorkerPoolMonitor.requestArrived(stageName);
+			WorkerPoolMonitor.logIfQueued(stageName);
 			vertx.executeBlocking(future -> {
 				MessageDTO messageDTO =new MessageDTO();
-				WorkerPoolMonitor.threadAcquired(stageName, wasQueued);
 				try {
 				MDC.setContextMap(mdc);
 				JsonObject jsonObject = (JsonObject) msg.getBody();
 				messageDTO = objectMapper.readValue(objectMapper.writeValueAsString(jsonObject.getMap()), MessageDTO.class);
 
 				if(isMessageExpired(messageDTO, messageExpiryTimeLimit)) {
-					WorkerPoolMonitor.threadReleased(stageName);
 					future.fail(new MessageExpiredException("rid: " + messageDTO.getRid() +
 						" lastHopTimestamp " + messageDTO.getLastHopTimestamp()));
 					return;
@@ -208,7 +207,6 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 					MessageDTO result = process(messageDTO);
 					addTagsToMessageDTO(result);
 					result.setLastHopTimestamp(DateUtils2.formatToISOString(DateUtils2.getUTCCurrentDateTime()));
-					WorkerPoolMonitor.threadReleased(stageName);
 					future.complete(result);
 				} catch (Exception e) {
 					logger.error("{} -- {} {} {}",
@@ -219,7 +217,6 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 					messageDTO.setInternalError(true);
 					addTagsToMessageDTO(messageDTO);
 					messageDTO.setLastHopTimestamp(DateUtils2.formatToISOString(DateUtils2.getUTCCurrentDateTime()));
-					WorkerPoolMonitor.threadReleased(stageName);
 					future.complete(messageDTO);
 				}
 
@@ -262,24 +259,21 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 		mosipEventBus.consume(fromAddress, (msg, handler) -> {
 			logger.debug("Received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			final boolean wasQueued = WorkerPoolMonitor.requestArrived(stageName);
+			WorkerPoolMonitor.logIfQueued(stageName);
 			vertx.executeBlocking(future -> {
 				MessageDTO messageDTO=new MessageDTO();
-				WorkerPoolMonitor.threadAcquired(stageName, wasQueued);
 				try {
 				MDC.setContextMap(mdc);
 				JsonObject jsonObject = (JsonObject) msg.getBody();
 				messageDTO = objectMapper.readValue(objectMapper.writeValueAsString(jsonObject.getMap()), MessageDTO.class);
 
 				if(isMessageExpired(messageDTO, messageExpiryTimeLimit)) {
-					WorkerPoolMonitor.threadReleased(stageName);
 					future.fail(new MessageExpiredException("rid: " + messageDTO.getRid() +
 						" lastHopTimestamp " + messageDTO.getLastHopTimestamp()));
 					return;
 				}
 				
 					MessageDTO result = process(messageDTO);
-					WorkerPoolMonitor.threadReleased(stageName);
 					future.complete(result);
 				} catch (Exception e) {
 					logger.error("{} -- {} {} {}",
@@ -288,7 +282,6 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 						e.getMessage(), ExceptionUtils.getStackTrace(e));
 					messageDTO.setIsValid(false);
 					messageDTO.setInternalError(true);
-					WorkerPoolMonitor.threadReleased(stageName);
 					future.complete(messageDTO);
 				}
 			}, false, handler);

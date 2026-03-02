@@ -1,185 +1,111 @@
 package io.mosip.registration.processor.core.monitoring;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.TimeUnit;
 
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.registration.processor.core.logger.RegProcessorLogger;
+import io.vertx.core.Vertx;
+import io.vertx.micrometer.backends.BackendRegistries;
 
 /**
  * Utility class for monitoring Vert.x worker pool usage.
- * Tracks active worker threads and queued requests per stage.
+ * Uses Vert.x Micrometer metrics for accurate thread tracking.
+ * Captures ALL worker thread usage including message processing, health checks, etc.
  */
 public class WorkerPoolMonitor {
 
     private static final Logger logger = RegProcessorLogger.getLogger(WorkerPoolMonitor.class);
 
-    private static final Map<String, StageWorkerMetrics> stageMetrics = new ConcurrentHashMap<>();
+    private static Vertx vertxInstance;
+    private static String stageName;
+    private static long periodicLoggerId = -1;
 
     private WorkerPoolMonitor() {
     }
 
     /**
-     * Register a stage with its configured worker pool size.
+     * Register Vertx instance and stage name for periodic logging.
      */
-    public static void registerStage(String stageName, int workerPoolSize) {
-        stageMetrics.put(stageName, new StageWorkerMetrics(workerPoolSize));
-    }
-
-    /**
-     * Called when a request arrives (before worker thread is assigned).
-     * If all workers are busy, request is queued.
-     * 
-     * @return true if request was queued (pool was full), false otherwise
-     */
-    public static boolean requestArrived(String stageName) {
-        StageWorkerMetrics metrics = stageMetrics.get(stageName);
-        if (metrics == null) return false;
-
-        int activeWorkers = metrics.getActiveCount();
-        int poolSize = metrics.getWorkerPoolSize();
-
-        if (activeWorkers >= poolSize) {
-            int queueDepth = metrics.incrementQueuedCount();
-            metrics.incrementTotalQueuedCount();
-            logger.warn("WORKER_POOL_QUEUE: Stage={}, WorkersInUse={}/{}, QueuedRequests={}",
-                    stageName, activeWorkers, poolSize, queueDepth);
-            return true;
+    public static void registerStage(String name, Vertx vertx) {
+        if (vertxInstance == null) {
+            vertxInstance = vertx;
+            stageName = name;
         }
-        return false;
     }
 
     /**
-     * Called when a worker thread starts processing.
-     * 
-     * @param wasQueued true if this request was queued when it arrived
+     * Start periodic logging of worker pool status.
+     * Logs every specified interval - captures ALL thread usage (messages, health checks, etc.)
+     *
+     * @param intervalSeconds interval between logs in seconds
      */
-    public static void threadAcquired(String stageName, boolean wasQueued) {
-        StageWorkerMetrics metrics = stageMetrics.get(stageName);
-        if (metrics == null) return;
-
-        if (wasQueued) {
-            metrics.decrementQueuedCount();
+    public static void startPeriodicLogging(long intervalSeconds) {
+        if (vertxInstance == null) {
+            logger.warn("WORKER_POOL_MONITOR: Cannot start periodic logging - Vertx instance not registered");
+            return;
+        }
+        if (periodicLoggerId != -1) {
+            return;
         }
 
-        int activeWorkers = metrics.incrementActiveCount();
-        int poolSize = metrics.getWorkerPoolSize();
-        metrics.updatePeakIfHigher(activeWorkers);
-
-        logger.info("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}",
-                stageName, activeWorkers, poolSize, metrics.getQueuedCount());
-    }
-
-    /**
-     * Called when a worker thread finishes processing.
-     */
-    public static void threadReleased(String stageName) {
-        StageWorkerMetrics metrics = stageMetrics.get(stageName);
-        if (metrics == null) return;
-
-        metrics.incrementTotalProcessed();
-        int activeWorkers = metrics.decrementActiveCount();
-        int poolSize = metrics.getWorkerPoolSize();
-
-        logger.info("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}",
-                stageName, activeWorkers, poolSize, metrics.getQueuedCount());
-    }
-
-    /**
-     * Get current snapshot of worker pool status for a stage.
-     */
-    public static String getPoolStatus(String stageName) {
-        StageWorkerMetrics metrics = stageMetrics.get(stageName);
-        if (metrics == null) {
-            return "Stage " + stageName + " not registered";
-        }
-        return String.format("Stage=%s, WorkersInUse=%d/%d, QueuedRequests=%d, PeakWorkers=%d, TotalProcessed=%d, TotalQueued=%d",
-                stageName, metrics.getActiveCount(), metrics.getWorkerPoolSize(),
-                metrics.getQueuedCount(), metrics.getPeakActiveCount(),
-                metrics.getTotalProcessed(), metrics.getTotalQueuedCount());
-    }
-
-    /**
-     * Log current pool status for all stages.
-     */
-    public static void logAllPoolStatus() {
-        logger.info("=== WORKER_POOL_STATUS_SNAPSHOT ===");
-        stageMetrics.forEach((stageName, metrics) -> {
-            logger.info("WORKER_POOL_SNAPSHOT: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PeakWorkers={}, TotalProcessed={}, TotalQueued={}",
-                    stageName, metrics.getActiveCount(), metrics.getWorkerPoolSize(),
-                    metrics.getQueuedCount(), metrics.getPeakActiveCount(),
-                    metrics.getTotalProcessed(), metrics.getTotalQueuedCount());
+        periodicLoggerId = vertxInstance.setPeriodic(TimeUnit.SECONDS.toMillis(intervalSeconds), id -> {
+            logPoolStatus();
         });
-        logger.info("=== END WORKER_POOL_STATUS_SNAPSHOT ===");
+        logger.info("WORKER_POOL_MONITOR: Started periodic logging every {} seconds", intervalSeconds);
     }
 
     /**
-     * Inner class to hold metrics for each stage.
+     * Log warning only if requests are queued (pool is saturated).
+     * Call this from message processing paths for alert-only logging.
      */
-    private static class StageWorkerMetrics {
-        private final int workerPoolSize;
-        private final AtomicInteger activeCount = new AtomicInteger(0);
-        private final AtomicInteger queuedCount = new AtomicInteger(0);
-        private final AtomicInteger peakActiveCount = new AtomicInteger(0);
-        private final AtomicLong totalProcessed = new AtomicLong(0);
-        private final AtomicLong totalQueuedCount = new AtomicLong(0);
+    public static void logIfQueued(String stageName) {
+        MeterRegistry registry = BackendRegistries.getDefaultNow();
+        if (registry == null) return;
 
-        StageWorkerMetrics(int workerPoolSize) {
-            this.workerPoolSize = workerPoolSize;
+        Double queueSize = getGaugeValue(registry, "vertx.pool.queue.size", "worker");
+        if (queueSize != null && queueSize > 0) {
+            Double inUse = getGaugeValue(registry, "vertx.pool.inUse", "worker");
+            Double poolSize = getGaugeValue(registry, "vertx.pool.size", "worker");
+            logger.warn("WORKER_POOL_QUEUE: Stage={}, WorkersInUse={}/{}, QueuedRequests={}",
+                    stageName,
+                    inUse != null ? inUse.intValue() : "N/A",
+                    poolSize != null ? poolSize.intValue() : "N/A",
+                    queueSize.intValue());
+        }
+    }
+
+    /**
+     * Log pool status - captures ALL thread usage.
+     */
+    private static void logPoolStatus() {
+        MeterRegistry registry = BackendRegistries.getDefaultNow();
+        if (registry == null) {
+            return;
         }
 
-        int getWorkerPoolSize() {
-            return workerPoolSize;
-        }
+        Double inUse = getGaugeValue(registry, "vertx.pool.inUse", "worker");
+        Double poolSize = getGaugeValue(registry, "vertx.pool.size", "worker");
+        Double queueSize = getGaugeValue(registry, "vertx.pool.queue.size", "worker");
+        Double ratio = getGaugeValue(registry, "vertx.pool.ratio", "worker");
 
-        int getActiveCount() {
-            return activeCount.get();
+        if (inUse != null && poolSize != null) {
+            if (queueSize != null && queueSize > 0) {
+                logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
+                        stageName, inUse.intValue(), poolSize.intValue(), queueSize.intValue(),
+                        ratio != null ? String.format("%.2f", ratio) : "N/A");
+            } else {
+                logger.info("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
+                        stageName, inUse.intValue(), poolSize.intValue(),
+                        queueSize != null ? queueSize.intValue() : 0,
+                        ratio != null ? String.format("%.2f", ratio) : "N/A");
+            }
         }
+    }
 
-        int getQueuedCount() {
-            return queuedCount.get();
-        }
-
-        int getPeakActiveCount() {
-            return peakActiveCount.get();
-        }
-
-        long getTotalProcessed() {
-            return totalProcessed.get();
-        }
-
-        long getTotalQueuedCount() {
-            return totalQueuedCount.get();
-        }
-
-        int incrementActiveCount() {
-            return activeCount.incrementAndGet();
-        }
-
-        int decrementActiveCount() {
-            return activeCount.decrementAndGet();
-        }
-
-        int incrementQueuedCount() {
-            return queuedCount.incrementAndGet();
-        }
-
-        int decrementQueuedCount() {
-            return queuedCount.decrementAndGet();
-        }
-
-        void incrementTotalQueuedCount() {
-            totalQueuedCount.incrementAndGet();
-        }
-
-        void incrementTotalProcessed() {
-            totalProcessed.incrementAndGet();
-        }
-
-        void updatePeakIfHigher(int currentActive) {
-            peakActiveCount.updateAndGet(peak -> Math.max(peak, currentActive));
-        }
+    private static Double getGaugeValue(MeterRegistry registry, String metricName, String poolType) {
+        Gauge gauge = registry.find(metricName).tag("pool.type", poolType).gauge();
+        return gauge != null ? gauge.value() : null;
     }
 }
