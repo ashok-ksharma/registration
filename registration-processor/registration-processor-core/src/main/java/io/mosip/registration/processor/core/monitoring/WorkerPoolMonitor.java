@@ -51,9 +51,13 @@ public class WorkerPoolMonitor {
         }
 
         periodicLoggerId = vertxInstance.setPeriodic(TimeUnit.SECONDS.toMillis(intervalSeconds), id -> {
-            logPoolStatus();
+            try {
+                logPoolStatus();
+            } catch (Exception e) {
+                logger.error("WORKER_POOL_MONITOR: Error in periodic logging", e);
+            }
         });
-        logger.info("WORKER_POOL_MONITOR: Started periodic logging every {} seconds", intervalSeconds);
+        logger.warn("WORKER_POOL_MONITOR: Started periodic logging every {} seconds for stage {}", intervalSeconds, stageName);
     }
 
     /**
@@ -82,6 +86,7 @@ public class WorkerPoolMonitor {
     private static void logPoolStatus() {
         MeterRegistry registry = BackendRegistries.getDefaultNow();
         if (registry == null) {
+            logger.warn("WORKER_POOL_STATUS: Stage={}, Micrometer registry not available", stageName);
             return;
         }
 
@@ -90,22 +95,40 @@ public class WorkerPoolMonitor {
         Double queueSize = getGaugeValue(registry, "vertx.pool.queue.size", "worker");
         Double ratio = getGaugeValue(registry, "vertx.pool.ratio", "worker");
 
-        if (inUse != null && poolSize != null) {
-            if (queueSize != null && queueSize > 0) {
-                logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
-                        stageName, inUse.intValue(), poolSize.intValue(), queueSize.intValue(),
-                        ratio != null ? String.format("%.2f", ratio) : "N/A");
-            } else {
-                logger.info("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
-                        stageName, inUse.intValue(), poolSize.intValue(),
-                        queueSize != null ? queueSize.intValue() : 0,
-                        ratio != null ? String.format("%.2f", ratio) : "N/A");
-            }
+        if (inUse == null || poolSize == null) {
+            logger.warn("WORKER_POOL_STATUS: Stage={}, Metrics not available (inUse={}, poolSize={})", 
+                    stageName, inUse, poolSize);
+            return;
+        }
+
+        if (queueSize != null && queueSize > 0) {
+            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
+                    stageName, inUse.intValue(), poolSize.intValue(), queueSize.intValue(),
+                    ratio != null ? String.format("%.2f", ratio) : "N/A");
+        } else {
+            logger.warn("WORKER_POOL_STATUS: Stage={}, WorkersInUse={}/{}, QueuedRequests={}, PoolRatio={}",
+                    stageName, inUse.intValue(), poolSize.intValue(),
+                    queueSize != null ? queueSize.intValue() : 0,
+                    ratio != null ? String.format("%.2f", ratio) : "N/A");
         }
     }
 
     private static Double getGaugeValue(MeterRegistry registry, String metricName, String poolType) {
         Gauge gauge = registry.find(metricName).tag("pool.type", poolType).gauge();
-        return gauge != null ? gauge.value() : null;
+        logger.debug("WORKER_POOL_GAUGE: metricName={}, tag=pool.type={}, gauge={}", metricName, poolType, gauge);
+        
+        if (gauge == null) {
+            gauge = registry.find(metricName.replace(".", "_")).tag("pool_type", poolType).gauge();
+            logger.debug("WORKER_POOL_GAUGE: metricName={}, tag=pool_type={}, gauge={}", 
+                    metricName.replace(".", "_"), poolType, gauge);
+        }
+        if (gauge == null) {
+            gauge = registry.find(metricName).tag("pool_type", poolType).gauge();
+            logger.debug("WORKER_POOL_GAUGE: metricName={}, tag=pool_type={}, gauge={}", metricName, poolType, gauge);
+        }
+        
+        Double value = gauge != null ? gauge.value() : null;
+        logger.warn("WORKER_POOL_GAUGE: metricName={}, value={}", metricName, value);
+        return value;
     }
 }
