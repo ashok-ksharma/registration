@@ -36,7 +36,6 @@ import io.mosip.registration.processor.core.exception.util.PlatformErrorMessages
 import io.mosip.registration.processor.core.http.RequestWrapper;
 import io.mosip.registration.processor.core.http.ResponseWrapper;
 import io.mosip.registration.processor.core.logger.RegProcessorLogger;
-import io.mosip.registration.processor.core.monitoring.WorkerPoolMonitor;
 import io.mosip.registration.processor.core.packet.dto.packetmanager.TagRequestDto;
 import io.mosip.registration.processor.core.packet.dto.packetmanager.TagResponseDto;
 import io.mosip.registration.processor.core.spi.eventbus.EventBusManager;
@@ -48,7 +47,6 @@ import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
 import io.vertx.core.eventbus.EventBusOptions;
-import io.vertx.core.WorkerExecutor;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.micrometer.MicrometerMetricsOptions;
@@ -145,8 +143,6 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 						.setEnabled(true))
 				.setEnabled(true);
 
-		String stageName = verticleName.getClass().getSimpleName();
-
 		VertxOptions options = new VertxOptions().setClustered(true).setClusterManager(clusterManager)
 				.setHAEnabled(false).setWorkerPoolSize(instanceNumber)
 				.setEventBusOptions(new EventBusOptions().setPort(getEventBusPort()).setHost(address))
@@ -164,8 +160,6 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 
 		try {
 			Vertx vert = eventBus.get();
-			WorkerPoolMonitor.registerStage(stageName, instanceNumber, vert);
-			WorkerPoolMonitor.startPeriodicLogging(30);
 			mosipEventBus = mosipEventBusFactory.getEventBus(vert, getEventBusType(), getPropertyPrefix());
 		} catch (InterruptedException | ExecutionException | UnsupportedEventBusTypeException e) {
 			Thread.currentThread().interrupt();
@@ -187,19 +181,15 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 			consume(mosipEventBus, fromAddress, messageExpiryTimeLimit);
 			return;
 		}
-		String stageName = this.getClass().getSimpleName();
-		WorkerExecutor executor = WorkerPoolMonitor.getWorkerExecutor(stageName);
 		mosipEventBus.consumeAndSend(fromAddress, toAddress, (msg, handler) -> {
 			logger.debug("consumeAndSend received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			WorkerExecutor workerExecutor = executor != null ? executor : vertx.createSharedWorkerExecutor("default-pool");
-			workerExecutor.executeBlocking(future -> {
+			vertx.executeBlocking(future -> {
 				MessageDTO messageDTO =new MessageDTO();
 				try {
 				MDC.setContextMap(mdc);
 				JsonObject jsonObject = (JsonObject) msg.getBody();
 				messageDTO = objectMapper.readValue(objectMapper.writeValueAsString(jsonObject.getMap()), MessageDTO.class);
-
 				if(isMessageExpired(messageDTO, messageExpiryTimeLimit)) {
 					future.fail(new MessageExpiredException("rid: " + messageDTO.getRid() +
 						" lastHopTimestamp " + messageDTO.getLastHopTimestamp()));
@@ -257,19 +247,15 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 	 */
 	public void consume(MosipEventBus mosipEventBus, MessageBusAddress fromAddress,
 			long messageExpiryTimeLimit) {
-		String stageName = this.getClass().getSimpleName();
-		WorkerExecutor executor = WorkerPoolMonitor.getWorkerExecutor(stageName);
 		mosipEventBus.consume(fromAddress, (msg, handler) -> {
 			logger.debug("Received from {} {}",fromAddress.toString(), msg.getBody());
 			Map<String, String> mdc = MDC.getCopyOfContextMap();
-			WorkerExecutor workerExecutor = executor != null ? executor : vertx.createSharedWorkerExecutor("default-pool");
-			workerExecutor.executeBlocking(future -> {
+			vertx.executeBlocking(future -> {
 				MessageDTO messageDTO=new MessageDTO();
 				try {
 				MDC.setContextMap(mdc);
 				JsonObject jsonObject = (JsonObject) msg.getBody();
 				messageDTO = objectMapper.readValue(objectMapper.writeValueAsString(jsonObject.getMap()), MessageDTO.class);
-
 				if(isMessageExpired(messageDTO, messageExpiryTimeLimit)) {
 					future.fail(new MessageExpiredException("rid: " + messageDTO.getRid() +
 						" lastHopTimestamp " + messageDTO.getLastHopTimestamp()));
