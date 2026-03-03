@@ -134,7 +134,6 @@ public class WorkerPoolMonitor {
                 return gauge.value();
             }
         }
-        logger.warn("WORKER_POOL_STATUS : Gauge not found : {}", Arrays.toString(metricNames));
         return 0.0;
     }
 
