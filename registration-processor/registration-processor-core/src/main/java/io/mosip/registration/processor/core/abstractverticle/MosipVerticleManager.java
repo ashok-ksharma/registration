@@ -51,6 +51,7 @@ import io.vertx.core.eventbus.EventBusOptions;
 import io.vertx.core.WorkerExecutor;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
+import io.vertx.micrometer.Label;
 import io.vertx.micrometer.MicrometerMetricsOptions;
 import io.vertx.micrometer.VertxPrometheusOptions;
 import io.vertx.spi.cluster.hazelcast.HazelcastClusterManager;
@@ -143,9 +144,10 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 		MicrometerMetricsOptions micrometerMetricsOptions = new MicrometerMetricsOptions()
 				.setPrometheusOptions(new VertxPrometheusOptions()
 						.setEnabled(true))
+				.addLabels(Label.POOL_NAME, Label.POOL_TYPE)
 				.setEnabled(true);
 
-		String stageName = verticleName.getClass().getSimpleName();
+		String stageName = org.springframework.util.ClassUtils.getUserClass(verticleName.getClass()).getSimpleName();
 
 		VertxOptions options = new VertxOptions().setClustered(true).setClusterManager(clusterManager)
 				.setHAEnabled(false).setWorkerPoolSize(instanceNumber)
@@ -187,7 +189,7 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 			consume(mosipEventBus, fromAddress, messageExpiryTimeLimit);
 			return;
 		}
-		String stageName = this.getClass().getSimpleName();
+		String stageName = org.springframework.util.ClassUtils.getUserClass(this.getClass()).getSimpleName();
 		WorkerExecutor executor = WorkerPoolMonitor.getWorkerExecutor(stageName);
 		mosipEventBus.consumeAndSend(fromAddress, toAddress, (msg, handler) -> {
 			logger.debug("consumeAndSend received from {} {}",fromAddress.toString(), msg.getBody());
@@ -257,7 +259,7 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 	 */
 	public void consume(MosipEventBus mosipEventBus, MessageBusAddress fromAddress,
 			long messageExpiryTimeLimit) {
-		String stageName = this.getClass().getSimpleName();
+		String stageName = org.springframework.util.ClassUtils.getUserClass(this.getClass()).getSimpleName();
 		WorkerExecutor executor = WorkerPoolMonitor.getWorkerExecutor(stageName);
 		mosipEventBus.consume(fromAddress, (msg, handler) -> {
 			logger.debug("Received from {} {}",fromAddress.toString(), msg.getBody());

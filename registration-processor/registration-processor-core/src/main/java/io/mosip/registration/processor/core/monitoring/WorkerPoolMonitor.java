@@ -1,5 +1,6 @@
 package io.mosip.registration.processor.core.monitoring;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -102,9 +103,9 @@ public class WorkerPoolMonitor {
             String stageName = entry.getKey();
             StageInfo info = entry.getValue();
             
-            double inUse = getMetricValue(registry, "vertx.pool.inUse", info.poolName);
-            double queueSize = getMetricValue(registry, "vertx.pool.queue.size", info.poolName);
-            double ratio = getMetricValue(registry, "vertx.pool.ratio", info.poolName);
+            double inUse = getMetricValue(registry, info.poolName, "vertx.pool.inUse", "vertx.pool.in.use");
+            double queueSize = getMetricValue(registry, info.poolName, "vertx.pool.queue.size", "vertx.pool.queue.pending");
+            double ratio = getMetricValue(registry, info.poolName, "vertx.pool.ratio");
             
             int poolSize = info.poolSize;
             int workersInUse = (int) inUse;
@@ -123,12 +124,18 @@ public class WorkerPoolMonitor {
     /**
      * Get metric value for a specific pool name.
      */
-    private static double getMetricValue(MeterRegistry registry, String metricName, String poolName) {
-        Gauge gauge = registry.find(metricName)
-                .tag("pool.type", "worker")
-                .tag("pool.name", poolName)
-                .gauge();
-        return gauge != null ? gauge.value() : 0.0;
+    private static double getMetricValue(MeterRegistry registry, String poolName, String... metricNames) {
+        for (String metricName : metricNames) {
+            Gauge gauge = registry.find(metricName)
+                    .tag("pool_type", "worker")
+                    .tag("pool_name", poolName)
+                    .gauge();
+            if (gauge != null) {
+                return gauge.value();
+            }
+        }
+        logger.warn("WORKER_POOL_STATUS : Gauge not found : {}", Arrays.toString(metricNames));
+        return 0.0;
     }
 
     /**
