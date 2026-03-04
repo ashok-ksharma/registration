@@ -37,7 +37,7 @@ public class BiometricsXSDValidator {
             CbeffContainerImpl cbeffContainer = new CbeffContainerImpl();
 			BIR bir = cbeffContainer.createBIRType(biometricRecord.getSegments());
         CbeffValidator.createXMLBytes(bir, xsd);//validates XSD
-        regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), "",
+        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), "",
                 "[PACKET_VALIDATOR_TIMING] BiometricsXSDValidator.validateXSD completed in " + (System.currentTimeMillis() - startMs) + " ms");
     } 
 

@@ -106,7 +106,7 @@ public class ApplicantDocumentValidation {
 
         regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
                 registrationId, "ApplicantDocumentValidation::validateApplicantData::exit");
-        regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
                 "[PACKET_VALIDATOR_TIMING] ApplicantDocumentValidation.validateDocument completed in " + (System.currentTimeMillis() - startMs) + " ms");
         return true;
     }

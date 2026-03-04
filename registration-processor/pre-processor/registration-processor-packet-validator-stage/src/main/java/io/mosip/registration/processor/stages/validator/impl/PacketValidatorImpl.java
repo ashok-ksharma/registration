@@ -92,7 +92,7 @@ public class PacketValidatorImpl implements PacketValidator {
             long t0 = System.currentTimeMillis();
             ValidatePacketResponse response = packetManagerService.validate(id, process,
                     ProviderStageName.PACKET_VALIDATOR);
-            regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                     "[PACKET_VALIDATOR_TIMING] packetManagerService.validate completed in " + (System.currentTimeMillis() - t0) + " ms");
             if (!response.isValid()) {
                 regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
@@ -109,7 +109,7 @@ public class PacketValidatorImpl implements PacketValidator {
             long t1 = System.currentTimeMillis();
             if(!checkConsentForPacket(id,process,ProviderStageName.PACKET_VALIDATOR))
 			{
-                regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+                regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                         "[PACKET_VALIDATOR_TIMING] checkConsentForPacket completed in " + (System.currentTimeMillis() - t1) + " ms");
                 regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
                         LoggerFileConstant.REGISTRATIONID.toString(), id,
@@ -120,7 +120,7 @@ public class PacketValidatorImpl implements PacketValidator {
                         .setPacketValidaionFailureMessage(StatusUtil.PACKET_CONSENT_VALIDATION.getMessage());
                 return false;
             }
-            regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                     "[PACKET_VALIDATOR_TIMING] checkConsentForPacket completed in " + (System.currentTimeMillis() - t1) + " ms");
 
             if (process.equalsIgnoreCase(RegistrationType.UPDATE.toString())
@@ -154,14 +154,14 @@ public class PacketValidatorImpl implements PacketValidator {
             Map<String, BiometricRecord> fetchedBiometrics = new HashMap<>();
             long t2 = System.currentTimeMillis();
             if (!applicantDocumentValidation(id, process, packetValidationDto, fetchedBiometrics)) {
-                regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+                regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                         "[PACKET_VALIDATOR_TIMING] applicantDocumentValidation completed in " + (System.currentTimeMillis() - t2) + " ms (failed)");
                 regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
                         LoggerFileConstant.REGISTRATIONID.toString(), id,
                         "ERROR =======>" + StatusUtil.APPLICANT_DOCUMENT_VALIDATION_FAILED.getMessage());
                 return false;
             }
-            regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                     "[PACKET_VALIDATOR_TIMING] applicantDocumentValidation completed in " + (System.currentTimeMillis() - t2) + " ms");
 
             // check if uin is in idrepisitory
@@ -180,11 +180,11 @@ public class PacketValidatorImpl implements PacketValidator {
 
             long t3 = System.currentTimeMillis();
             if (!biometricsXSDValidation(id, process, packetValidationDto, metaInfo, fetchedBiometrics)) {
-                regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+                regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                         "[PACKET_VALIDATOR_TIMING] biometricsXSDValidation completed in " + (System.currentTimeMillis() - t3) + " ms (failed)");
                 return false;
             }
-            regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                     "[PACKET_VALIDATOR_TIMING] biometricsXSDValidation completed in " + (System.currentTimeMillis() - t3) + " ms");
         } catch(PacketManagerNonRecoverableException e){
             regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
@@ -202,7 +202,7 @@ public class PacketValidatorImpl implements PacketValidator {
             packetValidationDto.setPacketValidatonStatusCode(StatusUtil.JSON_PARSING_EXCEPTION.getCode());
         }
 
-        regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                 "[PACKET_VALIDATOR_TIMING] PacketValidatorImpl.validate() total time " + (System.currentTimeMillis() - validateStartMs) + " ms");
         packetValidationDto.setValid(true);
         return packetValidationDto.isValid();
@@ -241,7 +241,7 @@ public class PacketValidatorImpl implements PacketValidator {
                 }
             }
             if (biometricRecord != null) {
-                regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+                regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                         "[PACKET_VALIDATOR_TIMING] getBiometrics(" + field + ") completed in " + (System.currentTimeMillis() - tField) + " ms");
             }
 
@@ -249,11 +249,11 @@ public class PacketValidatorImpl implements PacketValidator {
                 try {
                     long tXsd = System.currentTimeMillis();
                     biometricsXSDValidator.validateXSD(biometricRecord);
-                    regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                             "[PACKET_VALIDATOR_TIMING] validateXSD(" + field + ") completed in " + (System.currentTimeMillis() - tXsd) + " ms");
                     long tSig = System.currentTimeMillis();
                     biometricsSignatureValidator.validateSignature(id, process, biometricRecord, metaInfoMap);
-                    regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
+                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), id,
                             "[PACKET_VALIDATOR_TIMING] validateSignature(" + field + ") completed in " + (System.currentTimeMillis() - tSig) + " ms");
                 } catch (Exception e) {
                     if (e instanceof CbeffException) {

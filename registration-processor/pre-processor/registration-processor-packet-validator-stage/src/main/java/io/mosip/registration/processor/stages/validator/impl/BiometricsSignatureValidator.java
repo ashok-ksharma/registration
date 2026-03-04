@@ -99,11 +99,11 @@ public class BiometricsSignatureValidator {
 			String token = BiometricsSignatureHelper.extractJWTToken(bir);
 			long tJwt = System.currentTimeMillis();
 			validateJWTToken(id, token);
-			regProcLogger.debug(LoggerFileConstant.REGISTRATIONID.toString(), id,
+			regProcLogger.info(LoggerFileConstant.REGISTRATIONID.toString(), id,
 					"[PACKET_VALIDATOR_TIMING] validateJWTToken (per BIR) completed in " + (System.currentTimeMillis() - tJwt) + " ms");
 		}
 
-		regProcLogger.debug(LoggerFileConstant.REGISTRATIONID.toString(), id,
+		regProcLogger.info(LoggerFileConstant.REGISTRATIONID.toString(), id,
 				"[PACKET_VALIDATOR_TIMING] validateSignature total " + (System.currentTimeMillis() - startMs) + " ms");
 	}
 
