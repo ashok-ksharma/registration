@@ -54,6 +54,7 @@ public class ApplicantDocumentValidation {
      * @param fetchedBiometricsToReuse optional map to store fetched INDIVIDUAL_BIOMETRICS and INTRODUCER_BIO for reuse; may be null
      */
     public boolean validateDocument(String registrationId, String process, Map<String, BiometricRecord> fetchedBiometricsToReuse) throws IdentityNotFoundException, IOException, ApisResourceAccessException, PacketManagerException, JsonProcessingException {
+		long startMs = System.currentTimeMillis();
 		// validate all documents from mapping json
         JSONObject docMappingJson = utility.getRegistrationProcessorMappingJson(MappingJsonConstants.DOCUMENT);
 
@@ -105,6 +106,8 @@ public class ApplicantDocumentValidation {
 
         regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
                 registrationId, "ApplicantDocumentValidation::validateApplicantData::exit");
+        regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                "[PACKET_VALIDATOR_TIMING] ApplicantDocumentValidation.validateDocument completed in " + (System.currentTimeMillis() - startMs) + " ms");
         return true;
     }
 

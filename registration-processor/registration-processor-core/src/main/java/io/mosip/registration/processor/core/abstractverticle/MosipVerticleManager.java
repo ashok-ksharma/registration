@@ -167,7 +167,7 @@ public abstract class MosipVerticleManager extends AbstractVerticle
 		try {
 			Vertx vert = eventBus.get();
 			WorkerPoolMonitor.registerStage(stageName, instanceNumber, vert);
-			WorkerPoolMonitor.startPeriodicLogging(30);
+			//WorkerPoolMonitor.startPeriodicLogging(30);
 			mosipEventBus = mosipEventBusFactory.getEventBus(vert, getEventBusType(), getPropertyPrefix());
 		} catch (InterruptedException | ExecutionException | UnsupportedEventBusTypeException e) {
 			Thread.currentThread().interrupt();

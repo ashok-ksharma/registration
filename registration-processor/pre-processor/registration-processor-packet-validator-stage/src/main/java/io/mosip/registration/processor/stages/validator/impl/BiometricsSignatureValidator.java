@@ -33,9 +33,9 @@ import io.mosip.kernel.core.http.ResponseWrapper;
 import io.mosip.kernel.core.util.StringUtils;
 import io.mosip.registration.processor.core.code.ApiName;
 import io.mosip.registration.processor.core.constant.JsonConstant;
+import io.mosip.registration.processor.core.constant.LoggerFileConstant;
 import io.mosip.registration.processor.core.exception.ApisResourceAccessException;
 import io.mosip.registration.processor.core.exception.PacketManagerException;
-import io.mosip.registration.processor.core.exception.util.PlatformSuccessMessages;
 import io.mosip.registration.processor.core.packet.dto.FieldValue;
 import io.mosip.registration.processor.core.packet.dto.JWTSignatureVerifyRequestDto;
 import io.mosip.registration.processor.core.packet.dto.JWTSignatureVerifyResponseDto;
@@ -67,6 +67,7 @@ public class BiometricsSignatureValidator {
 			Map<String, String> metaInfoMap) throws JSONException, BiometricSignatureValidationException,
 			ApisResourceAccessException, PacketManagerException, IOException, io.mosip.kernel.core.util.exception.JsonProcessingException {
 
+		long startMs = System.currentTimeMillis();
 		// backward compatibility check
 		String version = getRegClientVersionFromMetaInfo(id, process, metaInfoMap);
 		if (regClientVersionsBeforeCbeffOthersAttritube.contains(version)) {
@@ -96,9 +97,14 @@ public class BiometricsSignatureValidator {
 			}
 
 			String token = BiometricsSignatureHelper.extractJWTToken(bir);
+			long tJwt = System.currentTimeMillis();
 			validateJWTToken(id, token);
+			regProcLogger.debug(LoggerFileConstant.REGISTRATIONID.toString(), id,
+					"[PACKET_VALIDATOR_TIMING] validateJWTToken (per BIR) completed in " + (System.currentTimeMillis() - tJwt) + " ms");
 		}
 
+		regProcLogger.debug(LoggerFileConstant.REGISTRATIONID.toString(), id,
+				"[PACKET_VALIDATOR_TIMING] validateSignature total " + (System.currentTimeMillis() - startMs) + " ms");
 	}
 
 	private String getRegClientVersionFromMetaInfo(String id, String process, Map<String, String> metaInfoMap)

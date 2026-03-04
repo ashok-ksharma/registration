@@ -4,6 +4,9 @@ import io.mosip.kernel.biometrics.commons.CbeffValidator;
 import io.mosip.kernel.biometrics.entities.BIR;
 import io.mosip.kernel.biometrics.entities.BiometricRecord;
 import io.mosip.kernel.cbeffutil.container.impl.CbeffContainerImpl;
+import io.mosip.kernel.core.logger.spi.Logger;
+import io.mosip.registration.processor.core.constant.LoggerFileConstant;
+import io.mosip.registration.processor.core.logger.RegProcessorLogger;
 import org.apache.commons.io.IOUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -14,6 +17,8 @@ import java.net.URL;
 @Component
 public class BiometricsXSDValidator {
 
+    private static final Logger regProcLogger = RegProcessorLogger.getLogger(BiometricsXSDValidator.class);
+
     @Value("${mosip.kernel.xsdstorage-uri}")
     private String configServerFileStorageURL;
     
@@ -23,6 +28,7 @@ public class BiometricsXSDValidator {
     private byte[] xsd = null;
 
     public void validateXSD(BiometricRecord biometricRecord ) throws Exception  {
+        long startMs = System.currentTimeMillis();
         if(xsd==null) {
             try (InputStream inputStream = new URL(configServerFileStorageURL + schemaFileName).openStream()) {
                 xsd =  IOUtils.toByteArray(inputStream);
@@ -31,6 +37,8 @@ public class BiometricsXSDValidator {
             CbeffContainerImpl cbeffContainer = new CbeffContainerImpl();
 			BIR bir = cbeffContainer.createBIRType(biometricRecord.getSegments());
         CbeffValidator.createXMLBytes(bir, xsd);//validates XSD
+        regProcLogger.debug(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(), "",
+                "[PACKET_VALIDATOR_TIMING] BiometricsXSDValidator.validateXSD completed in " + (System.currentTimeMillis() - startMs) + " ms");
     } 
 
 	
