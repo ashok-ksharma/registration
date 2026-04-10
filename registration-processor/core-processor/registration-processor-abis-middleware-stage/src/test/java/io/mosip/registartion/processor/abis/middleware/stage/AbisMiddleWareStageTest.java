@@ -59,6 +59,7 @@ import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
 import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
 import io.mosip.registration.processor.status.entity.RegistrationStatusEntity;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
+import io.mosip.registartion.processor.abis.middleware.util.AbisRequestSendStatusCommitUtility;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
@@ -98,6 +99,9 @@ public class AbisMiddleWareStageTest {
 
 	@Mock
 	private PacketInfoDao packetInfoDao;
+
+	@Mock
+	private AbisRequestSendStatusCommitUtility abisRequestSendStatusCommitUtility;
 
 	private RegistrationStatusEntity regStatusEntity;
 	private List<String> abisRefList;

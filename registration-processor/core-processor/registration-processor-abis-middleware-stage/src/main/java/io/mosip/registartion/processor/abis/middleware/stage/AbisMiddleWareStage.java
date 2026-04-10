@@ -78,6 +78,7 @@ import io.mosip.registration.processor.status.entity.TransactionEntity;
 import io.mosip.registration.processor.status.repositary.TransactionRepository;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 import io.mosip.registration.processor.status.utilities.RegistrationUtility;
+import io.mosip.registartion.processor.abis.middleware.util.AbisRequestSendStatusCommitUtility;
 
 /**
  * 
@@ -96,6 +97,7 @@ import io.mosip.registration.processor.status.utilities.RegistrationUtility;
         "io.mosip.registration.processor.core.config",
         "io.mosip.registration.processor.core.kernel.beans",
 		"io.mosip.registration.processor.stages.config",
+		"io.mosip.registartion.processor.abis.middleware.util",
 		"io.mosip.registartion.processor.abis.middleware.validators"})
 public class AbisMiddleWareStage extends MosipVerticleAPIManager {
 	private static Logger regProcLogger = RegProcessorLogger.getLogger(AbisMiddleWareStage.class);
@@ -132,6 +134,9 @@ public class AbisMiddleWareStage extends MosipVerticleAPIManager {
 
 	@Autowired
 	private PacketInfoDao packetInfoDao;
+
+	@Autowired
+	private AbisRequestSendStatusCommitUtility abisRequestSendStatusCommitUtility;
 
 	@Value("${vertx.cluster.configuration}")
 	private String clusterManagerUrl;
@@ -646,7 +651,7 @@ public class AbisMiddleWareStage extends MosipVerticleAPIManager {
 					StatusUtil.INSERT_IDENTIFY_REQUEST_FAILED.getMessage() + abisRequestDto.getAbisAppCode());
 			internalRegDto.setSubStatusCode(StatusUtil.SYSTEM_EXCEPTION_OCCURED.getCode());
 		}
-		abisRequestRepositary.save(abisReqEntity);
+		abisRequestSendStatusCommitUtility.commitStatus(abisReqEntity);
 
 	}
 
