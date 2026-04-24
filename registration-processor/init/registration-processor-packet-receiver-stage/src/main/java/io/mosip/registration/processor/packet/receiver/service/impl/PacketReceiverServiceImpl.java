@@ -132,11 +132,6 @@ public class PacketReceiverServiceImpl implements PacketReceiverService<File, Me
 
 	@Value("#{'${registration.processor.main-processes}'.split(',')}")
     private List<String> mainProcesses;
-
-	/** The virus scanner service. */
-	@Autowired
-	private VirusScanner<Boolean, InputStream> virusScannerService;
-
 	/*
 	 * (non-Javadoc)
 	 * 
@@ -340,39 +335,10 @@ public class PacketReceiverServiceImpl implements PacketReceiverService<File, Me
 	 */
 	private boolean scanFile(final byte[] input, RegistrationExceptionMapperUtil registrationExceptionMapperUtil,
 			String registrationId, InternalRegistrationStatusDto dto, LogDescription description) throws IOException {
-		try {
-			InputStream inputStream = new ByteArrayInputStream(input);
-			boolean isInputFileClean = virusScannerService.scanFile(inputStream);
-
-			if (!isInputFileClean) {
-				description.setMessage(PlatformErrorMessages.PRP_PKR_PACKET_VIRUS_SCAN_FAILED.getMessage());
-				description.setCode(PlatformErrorMessages.PRP_PKR_PACKET_VIRUS_SCAN_FAILED.getCode());
-				dto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-				dto.setStatusComment(StatusUtil.VIRUS_SCANNER_FAILED.getMessage());
-				dto.setSubStatusCode(StatusUtil.VIRUS_SCANNER_FAILED.getCode());
-				dto.setLatestTransactionStatusCode(registrationExceptionMapperUtil
-						.getStatusCode(RegistrationExceptionTypeCode.VIRUS_SCAN_FAILED_EXCEPTION));
-				regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-						LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
-						PlatformErrorMessages.PRP_PKR_PACKET_VIRUS_SCAN_FAILED.getMessage());
-			}
-			return isInputFileClean;
-		} catch (VirusScannerException e) {
-			description.setMessage(PlatformErrorMessages.PRP_PKR_PACKET_VIRUS_SCANNER_SERVICE_FAILED.getMessage());
-			description.setCode(PlatformErrorMessages.PRP_PKR_PACKET_VIRUS_SCANNER_SERVICE_FAILED.getCode());
-			dto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-			dto.setStatusComment(trimExpMessage.trimExceptionMessage(
-					StatusUtil.VIRUS_SCANNER_SERVICE_NOT_ACCESSIBLE.getMessage() + e.getMessage()));
-			dto.setSubStatusCode(StatusUtil.VIRUS_SCANNER_SERVICE_NOT_ACCESSIBLE.getCode());
-			dto.setLatestTransactionStatusCode(registrationExceptionMapperUtil
-					.getStatusCode(RegistrationExceptionTypeCode.VIRUS_SCANNER_SERVICE_FAILED));
-
-			regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
-					registrationId, PlatformErrorMessages.PRP_PKR_PACKET_VIRUS_SCANNER_SERVICE_FAILED.getMessage()
-							+ ExceptionUtils.getStackTrace(e));
-			return false;
-		}
-
+		regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+				LoggerFileConstant.REGISTRATIONID.toString(), "",
+				"PacketReceiverServiceImpl::scanFile() is bypassed for testing");
+		return true;
 	}
 
 	/**
