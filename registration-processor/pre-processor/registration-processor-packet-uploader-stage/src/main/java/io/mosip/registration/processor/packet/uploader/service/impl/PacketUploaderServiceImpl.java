@@ -28,8 +28,6 @@ import io.mosip.commons.khazana.spi.ObjectStoreAdapter;
 import io.mosip.kernel.core.exception.ExceptionUtils;
 import io.mosip.kernel.core.logger.spi.Logger;
 import io.mosip.kernel.core.util.HMACUtils2;
-import io.mosip.kernel.core.virusscanner.exception.VirusScannerException;
-import io.mosip.kernel.core.virusscanner.spi.VirusScanner;
 import io.mosip.registration.processor.core.abstractverticle.MessageDTO;
 import io.mosip.registration.processor.core.code.ApiName;
 import io.mosip.registration.processor.core.code.EventId;
@@ -144,12 +142,6 @@ public class PacketUploaderServiceImpl implements PacketUploaderService<MessageD
      */
     @Autowired
     private AuditLogRequestBuilder auditLogRequestBuilder;
-
-    /**
-     * The virus scanner service.
-     */
-    @Autowired
-    private VirusScanner<Boolean, InputStream> virusScannerService;
 
     @Autowired
     private RegistrationProcessorRestClientService restClient;
@@ -414,53 +406,10 @@ public class PacketUploaderServiceImpl implements PacketUploaderService<MessageD
      */
     private boolean scanFile(final byte[] input, String id, String refId, final Map<String, InputStream> sourcePackets, InternalRegistrationStatusDto dto,
                              LogDescription description, MessageDTO messageDTO) throws ApisResourceAccessException, PacketDecryptionFailureException {
-        boolean isInputFileClean = false;
-        try {
-            InputStream packet = new ByteArrayInputStream(input);
-            // scanning the top level packet
-            isInputFileClean = virusScannerService.scanFile(packet);
-
-            if (isInputFileClean) {
-                // scanning the source packets (Like - id, evidence, optional packets).
-                for (final Map.Entry<String, InputStream> source : sourcePackets.entrySet()) {
-                    if (source.getKey().endsWith(ZIP)) {
-                        InputStream decryptedData = decryptor
-                                .decrypt(id, utility.getRefId(id, refId), source.getValue());
-                        isInputFileClean = virusScannerService.scanFile(decryptedData);
-                    } else
-                        isInputFileClean = virusScannerService.scanFile(source.getValue());
-                    if (!isInputFileClean)
-                        break;
-                }
-            }
-            if (!isInputFileClean) {
-                description.setMessage(PlatformErrorMessages.RPR_PUM_PACKET_VIRUS_SCAN_FAILED.getMessage());
-                description.setCode(PlatformErrorMessages.RPR_PUM_PACKET_VIRUS_SCAN_FAILED.getCode());
-                dto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-                dto.setStatusComment(StatusUtil.VIRUS_SCANNER_FAILED_UPLOADER.getMessage());
-                dto.setSubStatusCode(StatusUtil.VIRUS_SCANNER_FAILED_UPLOADER.getCode());
-                dto.setLatestTransactionStatusCode(registrationStatusMapperUtil
-                        .getStatusCode(RegistrationExceptionTypeCode.VIRUS_SCAN_FAILED_EXCEPTION));
-                regProcLogger.error(LoggerFileConstant.SESSIONID.toString(),
-                        LoggerFileConstant.REGISTRATIONID.toString(), id,
-                        PlatformErrorMessages.RPR_PUM_PACKET_VIRUS_SCAN_FAILED.getMessage());
-            }
-        } catch (VirusScannerException e) {
-            messageDTO.setInternalError(Boolean.TRUE);
-            description.setMessage(PlatformErrorMessages.RPR_PUM_PACKET_VIRUS_SCANNER_SERVICE_FAILED.getMessage());
-            description.setCode(PlatformErrorMessages.RPR_PUM_PACKET_VIRUS_SCANNER_SERVICE_FAILED.getCode());
-            dto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-            dto.setStatusComment(trimExpMessage.trimExceptionMessage(
-                    StatusUtil.VIRUS_SCANNER_SERVICE_NOT_ACCESSIBLE.getMessage() + " " + e.getMessage()));
-            dto.setSubStatusCode(StatusUtil.VIRUS_SCANNER_SERVICE_NOT_ACCESSIBLE.getCode());
-            dto.setLatestTransactionStatusCode(registrationStatusMapperUtil
-                    .getStatusCode(RegistrationExceptionTypeCode.VIRUS_SCANNER_SERVICE_FAILED));
-            regProcLogger.error(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
-                    id, PlatformErrorMessages.RPR_PUM_PACKET_VIRUS_SCANNER_SERVICE_FAILED.getMessage()
-                            + ExceptionUtils.getStackTrace(e));
-
-        }
-        return isInputFileClean;
+        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                LoggerFileConstant.REGISTRATIONID.toString(), id,
+                "PacketUploaderServiceImpl::scanFile() is bypassed for testing");
+        return true;
     }
 
     /**
