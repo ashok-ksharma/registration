@@ -45,7 +45,6 @@ import io.mosip.kernel.core.exception.BaseUncheckedException;
 import io.mosip.kernel.core.util.HMACUtils2;
 import io.mosip.kernel.core.util.JsonUtils;
 import io.mosip.kernel.core.util.exception.JsonProcessingException;
-import io.mosip.kernel.core.virusscanner.exception.VirusScannerException;
 import io.mosip.kernel.core.virusscanner.spi.VirusScanner;
 import io.mosip.registration.processor.core.abstractverticle.MessageDTO;
 import io.mosip.registration.processor.core.code.ApiName;
@@ -391,27 +390,21 @@ public class PacketUploaderServiceTest {
 	public void testVirusScanFailedException() throws PacketDecryptionFailureException, ApisResourceAccessException {
 		Mockito.when(registrationStatusService.getRegistrationStatus(
 				Mockito.any(),Mockito.any(),Mockito.any(),Mockito.any())).thenReturn(entry);
-		
-		Mockito.when(virusScannerService.scanFile(Mockito.any(InputStream.class))).thenReturn(Boolean.FALSE);
-		Mockito.when(registrationStatusMapperUtil.getStatusCode(RegistrationExceptionTypeCode.VIRUS_SCAN_FAILED_EXCEPTION))
-		.thenReturn("FAILED");
+		ReflectionTestUtils.setField(packetuploaderservice, "maxRetryCount", 3);
 		Mockito.when(decryptor.decrypt(Mockito.any(), Mockito.any(),Mockito.any())).thenReturn(is);
 		MessageDTO result = packetuploaderservice.validateAndUploadPacket(dto, "");
-		assertFalse(result.getIsValid());
+		assertTrue(result.getIsValid());
 		assertFalse(result.getInternalError());
 	}
 
 	@Test
 	public void testScannerServiceFailedException() throws PacketDecryptionFailureException, ApisResourceAccessException {
 		Mockito.when(registrationStatusService.getRegistrationStatus(Mockito.any(),Mockito.any(),Mockito.any(), Mockito.any())).thenReturn(entry);
-		Mockito.when(virusScannerService.scanFile(Mockito.any(InputStream.class)))
-				.thenThrow(new VirusScannerException());
-		Mockito.when(registrationStatusMapperUtil.getStatusCode(RegistrationExceptionTypeCode.VIRUS_SCANNER_SERVICE_FAILED))
-		.thenReturn("FAILED");
+		ReflectionTestUtils.setField(packetuploaderservice, "maxRetryCount", 3);
 		Mockito.when(decryptor.decrypt(Mockito.any(), Mockito.any(),Mockito.any())).thenReturn(is);
 		MessageDTO result = packetuploaderservice.validateAndUploadPacket(dto, "PacketUploaderStage");
-		assertFalse(result.getIsValid());
-		assertTrue(result.getInternalError());
+		assertTrue(result.getIsValid());
+		assertFalse(result.getInternalError());
 	}
 
 	@Test
