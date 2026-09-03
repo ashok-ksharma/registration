@@ -208,8 +208,17 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
             registrationStatusDto
                     .setLatestTransactionTypeCode(RegistrationTransactionTypeCode.CREATE_DRAFT.toString());
             registrationStatusDto.setRegistrationStageName(getStageName());
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                    registrationId,
+                    "CreateDraftStage::process() messageRegType=" + object.getReg_type()
+                            + ", dtoRegType=" + registrationStatusDto.getRegistrationType()
+                            + ", incomingStatusComment=" + registrationStatusDto.getStatusComment()
+                            + ", incomingTxnStatus=" + registrationStatusDto.getLatestTransactionStatusCode()
+                            + ", incomingSubStatusCode=" + registrationStatusDto.getSubStatusCode());
 
             if ((RegistrationType.LOST.toString()).equalsIgnoreCase(object.getReg_type())) {
+                regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                        registrationId, "CreateDraftStage::process() taking LOST path");
                 if (idrepoDraftService.idrepoHasDraft(registrationId)) {
                     regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
                             LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
@@ -280,7 +289,16 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
                     uinExecutor.close();
                 }
 
+                regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                        registrationId,
+                        "CreateDraftStage::process() uinField=" + describeUinField(uinField));
+
                 if (!handleStaleCheck(registrationId, uinField, packetCreatedOn, object, description)) {
+                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                            LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                            "CreateDraftStage::process() stale check stopped processing. subStatusCode="
+                                    + description.getSubStatusCode()
+                                    + ", txnStatus=" + description.getTransactionStatusCode());
                     return object;
                 }
 
@@ -292,11 +310,19 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
                 updatePacketCreatedOnInDemographicIdentity(registrationId, registrationStatusDto, demographicIdentity, object, packetCreatedOn);
 
                 if (StringUtils.isEmpty(uinField) || uinField.equalsIgnoreCase("null") ) {
+                    regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                            LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                            "CreateDraftStage::process() taking empty-UIN draft create path");
 
                     idResponseDTO = sendIdRepoWithUin(registrationId, registrationStatusDto.getRegistrationType(), demographicIdentity,
                             uinField);
 
                     if (isIdResponseNotNull(idResponseDTO)) {
+                        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                                LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                                "CreateDraftStage::process() empty-UIN path ID Repo status="
+                                        + idResponseDTO.getResponse().getStatus()
+                                        + ". Setting CREATE_DRAFT_SUCCESS subStatusCode");
                         registrationStatusDto.setStatusComment(StatusUtil.CREATE_DRAFT_SUCCESS.getMessage());
                         registrationStatusDto.setSubStatusCode(StatusUtil.CREATE_DRAFT_SUCCESS.getCode());
                         isTransactionSuccessful = true;
@@ -347,17 +373,34 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
 
                 } else {
                     if ((RegistrationType.ACTIVATED.toString()).equalsIgnoreCase(object.getReg_type())) {
+                        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                                LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                                "CreateDraftStage::process() taking ACTIVATED path; UIN present");
                         isTransactionSuccessful = reActivateUin(idResponseDTO, registrationId, uinField, object,
                                 demographicIdentity, description);
                     } else if ((RegistrationType.DEACTIVATED.toString())
                             .equalsIgnoreCase(object.getReg_type())) {
+                        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                                LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                                "CreateDraftStage::process() taking DEACTIVATED path; UIN present");
                         idResponseDTO = deactivateUin(registrationId, uinField, object, demographicIdentity,
                                 description);
                     } else if (RegistrationType.UPDATE.toString().equalsIgnoreCase(object.getReg_type())
                             || (RegistrationType.RES_UPDATE.toString().equalsIgnoreCase(object.getReg_type()))
                             || (RegistrationType.UPDATE.toString().equalsIgnoreCase(utilities.getInternalProcess(additionalProcessCategoryMapping, object.getReg_type())))) {
+                        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                                LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                                "CreateDraftStage::process() taking UPDATE/uinUpdate path; messageRegType="
+                                        + object.getReg_type());
                         isTransactionSuccessful = uinUpdate(registrationId, registrationStatusDto.getRegistrationType(), uinField, object, demographicIdentity,
                                 description);
+                    } else {
+                        regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                                LoggerFileConstant.REGISTRATIONID.toString(), registrationId,
+                                "CreateDraftStage::process() no matching handler for messageRegType="
+                                        + object.getReg_type() + ", dtoRegType="
+                                        + registrationStatusDto.getRegistrationType()
+                                        + " with UIN present. Draft is not created/updated and subStatusCode is not set on this path");
                     }
                 }
             }
@@ -497,6 +540,18 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
                     ? PlatformSuccessMessages.RPR_CREATE_DRAFT_SUCCESS.getCode()
                     : description.getCode();
             String moduleName = ModuleName.CREATE_DRAFT.toString();
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                    registrationId,
+                    "CreateDraftStage::process() before updateRegistrationStatus"
+                            + " subStatusCode=" + registrationStatusDto.getSubStatusCode()
+                            + ", statusComment=" + registrationStatusDto.getStatusComment()
+                            + ", statusCode=" + registrationStatusDto.getStatusCode()
+                            + ", latestTxnType=" + registrationStatusDto.getLatestTransactionTypeCode()
+                            + ", latestTxnStatus=" + registrationStatusDto.getLatestTransactionStatusCode()
+                            + ", isTransactionSuccessful=" + isTransactionSuccessful
+                            + ", isValid=" + object.getIsValid()
+                            + ", internalError=" + object.getInternalError()
+                            + ", moduleId=" + moduleId);
             registrationStatusService.updateRegistrationStatus(registrationStatusDto, moduleId, moduleName);
             String eventId = isTransactionSuccessful ? EventId.RPR_402.toString() : EventId.RPR_405.toString();
             String eventName = eventId.equalsIgnoreCase(EventId.RPR_402.toString()) ? EventName.UPDATE.toString()
@@ -723,6 +778,10 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
         result = idRepoRequestBuilder(regId, uin, RegistrationType.ACTIVATED.toString().toUpperCase(), documentInfo,
                 demographicIdentity);
         if (null!=result && isIdResponseNotNull(result)) {
+            regProcLogger.info(LoggerFileConstant.SESSIONID.toString(), LoggerFileConstant.REGISTRATIONID.toString(),
+                    regId,
+                    "CreateDraftStage::uinUpdate() ID Repo status=" + result.getResponse().getStatus()
+                            + ", expected=" + IDREPO_STATUS);
 
             if (IDREPO_STATUS.equalsIgnoreCase(result.getResponse().getStatus())) {
                 isTransactionSuccessful = true;
@@ -733,6 +792,11 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
                         StatusUtil.CREATE_DRAFT_SUCCESS.getMessage() + " for registration Id: " + regId);
                 description.setTransactionStatusCode(RegistrationTransactionStatusCode.PROCESSED.toString());
                 object.setIsValid(Boolean.TRUE);
+            } else {
+                regProcLogger.info(LoggerFileConstant.SESSIONID.toString(),
+                        LoggerFileConstant.REGISTRATIONID.toString(), regId,
+                        "CreateDraftStage::uinUpdate() success block skipped because ID Repo status is not "
+                                + IDREPO_STATUS + ". subStatusCode is not set on this path");
             }
         } else {
             String statusComment = result != null && result.getErrors() != null ? result.getErrors().get(0).getMessage()
@@ -1209,6 +1273,29 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Describes the UIN field for logs without emitting the identifier itself.
+     */
+    private static String describeUinField(String uinField) {
+        if (uinField == null) {
+            return "null";
+        }
+        if (uinField.isEmpty()) {
+            return "empty";
+        }
+        if ("null".equalsIgnoreCase(uinField)) {
+            return "literal-null";
+        }
+        if (StringUtils.isBlank(uinField)) {
+            return "blank(length=" + uinField.length() + ")";
+        }
+        String trimmed = uinField.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            return "json(length=" + uinField.length() + ")";
+        }
+        return "present(length=" + uinField.length() + ")";
     }
 
     private void updateErrorFlags(InternalRegistrationStatusDto registrationStatusDto, MessageDTO object) {
