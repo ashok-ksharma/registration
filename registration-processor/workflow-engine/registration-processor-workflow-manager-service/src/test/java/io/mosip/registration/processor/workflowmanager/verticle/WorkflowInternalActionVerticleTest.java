@@ -186,7 +186,7 @@ public class WorkflowInternalActionVerticleTest {
 	@Before
 	public void setUp() throws Exception {
 		ReflectionTestUtils.setField(workflowInternalActionVerticle, "anonymousProfileBusAddress", "anonymous-profile-bus-in");
-		ReflectionTestUtils.setField(workflowInternalActionVerticle, "anonymousProfileTagKey", "anonymous");
+		ReflectionTestUtils.setField(workflowInternalActionVerticle, "anonymousProfileTagKey", "ANONYMOUS");
 		ReflectionTestUtils.setField(workflowInternalActionVerticle, "priorityBasedpacketManagerService",
 				priorityBasedPacketManagerService);
 	}
@@ -766,7 +766,7 @@ public class WorkflowInternalActionVerticleTest {
 				.thenReturn(registrationStatusDto);
 
 		Map<String, String> anonymousTags = new HashMap<>();
-		anonymousTags.put("anonymous", "{\"processName\":\"NEW\"}");
+		anonymousTags.put("ANONYMOUS", "{\"processName\":\"NEW\"}");
 		Mockito.when(packetManagerService.getTags(anyString(), any())).thenReturn(anonymousTags);
 
 		Mockito.doNothing().when(anonymousProfileService).saveAnonymousProfile(anyString(), anyString(), anyString());
