@@ -307,28 +307,14 @@ public class CreateDraftStage extends MosipVerticleAPIManager {
 
                     } else {
                         List<ErrorDTO> errors = idResponseDTO != null ? idResponseDTO.getErrors() : null;
-                        String statusComment = errors != null ? errors.get(0).getMessage()
+                        String statusComment = (errors != null && !errors.isEmpty() && errors.get(0) != null)
+                                ? errors.get(0).getMessage()
                                 : NULL_IDREPO_RESPONSE;
-                        int unknownErrorCount=0;
-                        for(ErrorDTO dto:errors) {
-                            if(dto.getErrorCode().equalsIgnoreCase("IDR-IDC-004")||dto.getErrorCode().equalsIgnoreCase("IDR-IDC-001")) {
-                                unknownErrorCount++;
-                            }
-                        }
-                        if(unknownErrorCount>0) {
-                            registrationStatusDto.setStatusCode(RegistrationStatusCode.PROCESSING.toString());
-                            registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
-                                    .getStatusCode(RegistrationExceptionTypeCode.PACKET_CREATE_DRAFT_REPROCESS));
-                            description.setTransactionStatusCode(registrationStatusMapperUtil
-                                    .getStatusCode(RegistrationExceptionTypeCode.PACKET_CREATE_DRAFT_REPROCESS));
-                        }
-                        else {
-                            registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
-                            registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
-                                    .getStatusCode(RegistrationExceptionTypeCode.PACKET_CREATE_DRAFT_FAILED));
-                            description.setTransactionStatusCode(registrationStatusMapperUtil
-                                    .getStatusCode(RegistrationExceptionTypeCode.PACKET_CREATE_DRAFT_FAILED));
-                        }
+                        registrationStatusDto.setStatusCode(RegistrationStatusCode.FAILED.toString());
+                        registrationStatusDto.setLatestTransactionStatusCode(registrationStatusMapperUtil
+                                .getStatusCode(RegistrationExceptionTypeCode.PACKET_CREATE_DRAFT_FAILED));
+                        description.setTransactionStatusCode(registrationStatusMapperUtil
+                                .getStatusCode(RegistrationExceptionTypeCode.PACKET_CREATE_DRAFT_FAILED));
                         registrationStatusDto.setStatusComment(trimExceptionMessage
                                 .trimExceptionMessage(StatusUtil.CREATE_DRAFT_FAILED.getMessage() + statusComment));
                         object.setInternalError(Boolean.TRUE);

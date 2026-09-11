@@ -15,7 +15,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 
@@ -33,7 +32,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import io.mosip.kernel.biometrics.spi.CbeffUtil;
 import io.mosip.registration.processor.core.abstractverticle.MessageDTO;
-import io.mosip.registration.processor.core.common.rest.dto.ErrorDTO;
 import io.mosip.registration.processor.core.constant.MappingJsonConstants;
 import io.mosip.registration.processor.core.constant.ProviderStageName;
 import io.mosip.registration.processor.core.exception.ApisResourceAccessException;
@@ -57,6 +55,7 @@ import io.mosip.registration.processor.status.code.RegistrationStatusCode;
 import io.mosip.registration.processor.status.dto.InternalRegistrationStatusDto;
 import io.mosip.registration.processor.status.dto.RegistrationStatusDto;
 import io.mosip.registration.processor.core.code.ApiName;
+import io.mosip.registration.processor.core.code.RegistrationTransactionStatusCode;
 import io.mosip.registration.processor.core.spi.restclient.RegistrationProcessorRestClientService;
 import io.mosip.registration.processor.status.service.RegistrationStatusService;
 
@@ -187,29 +186,76 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testNewPacketNullIdRepoResponse_FailsWithReprocess() throws Exception {
+    public void testNewPacketIdRepoValidationError_MarksFailed() throws Exception {
         messageDTO.setReg_type("NEW");
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), any()))
-                .thenReturn(failedIdResponseWithErrorCode("IDR-IDC-004"));
-
-        MessageDTO result = createDraftStage.process(messageDTO);
-
-        assertTrue(result.getIsValid());
-        assertTrue(result.getInternalError());
-        assertLastUpdatedSubStatus(StatusUtil.CREATE_DRAFT_FAILED.getCode());
-    }
-
-    @Test
-    public void testNewPacketIdrepoDraftException_InternalError() throws Exception {
-        messageDTO.setReg_type("NEW");
-        when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), any()))
-                .thenThrow(new IdrepoDraftException("CDS-005", "Draft update failed"));
+                .thenThrow(new IdrepoDraftException("IDR-IDC-005", "Input Data Validation Failed"));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
         assertFalse(result.getIsValid());
         assertTrue(result.getInternalError());
         assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
+    }
+
+    @Test
+    public void testNewPacketIdrepoDraftReprocessableException_MarksReprocess() throws Exception {
+        messageDTO.setReg_type("NEW");
+        when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), any()))
+                .thenThrow(new IdrepoDraftReprocessableException("IDR-IDC-004", "Unknown error occurred"));
+
+        MessageDTO result = createDraftStage.process(messageDTO);
+
+        assertTrue(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_REPROCESSABLE_EXCEPTION.getCode());
+        assertLastUpdatedStatusCode(RegistrationStatusCode.PROCESSING.toString());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.REPROCESS.toString());
+    }
+
+    @Test
+    public void testNewPacketRecordAlreadyExists_MarksFailed() throws Exception {
+        messageDTO.setReg_type("NEW");
+        when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), any()))
+                .thenThrow(new IdrepoDraftException("IDR-IDC-012", "Record already exists in DB"));
+
+        MessageDTO result = createDraftStage.process(messageDTO);
+
+        assertFalse(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
+    }
+
+    @Test
+    public void testNewPacketHasDraftException_MarksFailed() throws Exception {
+        messageDTO.setReg_type("NEW");
+        when(idrepoDraftService.idrepoHasDraft(REG_ID))
+                .thenThrow(new IdrepoDraftException(PlatformErrorMessages.DRAFT_CHECK_FAILED.getCode(),
+                        PlatformErrorMessages.DRAFT_CHECK_FAILED.getMessage()));
+
+        MessageDTO result = createDraftStage.process(messageDTO);
+
+        assertFalse(result.getIsValid());
+        assertTrue(result.getInternalError());
+        verify(idrepoDraftService, never()).idrepoUpdateDraftV2(anyString(), any(), any(), any());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
+    }
+
+    @Test
+    public void testNewPacketIdrepoDraftException_InternalError() throws Exception {
+        messageDTO.setReg_type("NEW");
+        when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), any()))
+                .thenThrow(new IdrepoDraftException("IDR-IDC-002", "Invalid Input Parameter"));
+
+        MessageDTO result = createDraftStage.process(messageDTO);
+
+        assertFalse(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
     }
 
     @Test
@@ -258,18 +304,19 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testUpdatePacketDraftFailedNullResponse() throws Exception {
+    public void testUpdatePacketNullResponse_MarksReprocess() throws Exception {
         messageDTO.setReg_type("UPDATE");
         registrationStatusDto.setRegistrationType("UPDATE");
         when(utility.getUIn(anyString(), anyString(), any(ProviderStageName.class))).thenReturn(EXISTING_UIN);
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), eq(true)))
-                .thenReturn(emptyIdResponse());
+                .thenThrow(new ApisResourceAccessException("Null response from idrepoUpdateDraftV2 for id " + REG_ID));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
-        assertFalse(result.getIsValid());
-        assertFalse(result.getInternalError());
-        assertLastUpdatedSubStatus(StatusUtil.CREATE_DRAFT_FAILED.getCode());
+        assertTrue(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.API_RESOUCE_ACCESS_FAILED.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.REPROCESS.toString());
     }
 
     @Test
@@ -278,13 +325,15 @@ public class CreateDraftStageTest {
         registrationStatusDto.setRegistrationType("UPDATE");
         when(utility.getUIn(anyString(), anyString(), any(ProviderStageName.class))).thenReturn(null);
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), isNull(), any(), isNull()))
-                .thenReturn(failedIdResponseWithErrorCode("IDR-IDC-005"));
+                .thenThrow(new IdrepoDraftException("IDR-IDC-005", "Input Data Validation Failed"));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
         assertFalse(result.getIsValid());
         assertTrue(result.getInternalError());
         verify(idrepoDraftService, times(1)).idrepoUpdateDraftV2(eq(REG_ID), isNull(), any(), isNull());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
     }
 
     @Test
@@ -308,12 +357,14 @@ public class CreateDraftStageTest {
         registrationStatusDto.setRegistrationType("UPDATE");
         when(utility.getUIn(anyString(), anyString(), any(ProviderStageName.class))).thenReturn(EXISTING_UIN);
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), eq(true)))
-                .thenThrow(new IdrepoDraftException("CDS-005", "populate draft failed"));
+                .thenThrow(new IdrepoDraftException("IDR-IDC-002", "Invalid Input Parameter"));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
         assertFalse(result.getIsValid());
         assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
     }
 
     @Test
@@ -334,13 +385,15 @@ public class CreateDraftStageTest {
         registrationStatusDto.setRegistrationType("RES_UPDATE");
         when(utility.getUIn(anyString(), anyString(), any(ProviderStageName.class))).thenReturn(null);
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), isNull(), any(), isNull()))
-                .thenReturn(failedIdResponseWithErrorCode("IDR-IDC-005"));
+                .thenThrow(new IdrepoDraftException("IDR-IDC-005", "Input Data Validation Failed"));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
         assertFalse(result.getIsValid());
         assertTrue(result.getInternalError());
         verify(idrepoDraftService, times(1)).idrepoUpdateDraftV2(eq(REG_ID), isNull(), any(), isNull());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
     }
 
     // -----------------------------------------------------------------------
@@ -379,12 +432,29 @@ public class CreateDraftStageTest {
         messageDTO.setReg_type("LOST");
         registrationStatusDto.setRegistrationType("LOST");
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), any()))
-                .thenThrow(new IdrepoDraftException("CDS-005", "LOST draft failed"));
+                .thenThrow(new IdrepoDraftException("IDR-IDC-002", "Invalid Input Parameter"));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
         assertFalse(result.getIsValid());
         assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.FAILED.toString());
+    }
+
+    @Test
+    public void testLostPacketIdrepoDraftReprocessableException_MarksReprocess() throws Exception {
+        messageDTO.setReg_type("LOST");
+        registrationStatusDto.setRegistrationType("LOST");
+        when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), eq(false)))
+                .thenThrow(new IdrepoDraftReprocessableException("IDR-IDS-003", "Key manager failed"));
+
+        MessageDTO result = createDraftStage.process(messageDTO);
+
+        assertTrue(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.IDREPO_DRAFT_REPROCESSABLE_EXCEPTION.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.REPROCESS.toString());
     }
 
     @Test
@@ -401,17 +471,18 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testLostPacketNullResponse_FailsWithoutInternalError() throws Exception {
+    public void testLostPacketNullResponse_MarksReprocess() throws Exception {
         messageDTO.setReg_type("LOST");
         registrationStatusDto.setRegistrationType("LOST");
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), eq(false)))
-                .thenReturn(emptyIdResponse());
+                .thenThrow(new ApisResourceAccessException("Null response from idrepoUpdateDraftV2 for id " + REG_ID));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
-        assertFalse(result.getIsValid());
-        assertFalse(result.getInternalError());
-        assertLastUpdatedSubStatus(StatusUtil.CREATE_DRAFT_FAILED.getCode());
+        assertTrue(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.API_RESOUCE_ACCESS_FAILED.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.REPROCESS.toString());
     }
 
     // -----------------------------------------------------------------------
@@ -471,20 +542,21 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testActivatedPacketNullResponseFromUpdate() throws Exception {
+    public void testActivatedPacketNullResponseFromUpdate_MarksReprocess() throws Exception {
         messageDTO.setReg_type("ACTIVATED");
         registrationStatusDto.setRegistrationType("ACTIVATED");
         when(utility.getUIn(anyString(), anyString(), any(ProviderStageName.class))).thenReturn(EXISTING_UIN);
         when(registrationProcessorRestClientService.getApi(eq(ApiName.IDREPOGETIDBYUIN), any(), anyString(), anyString(),
                 eq(IdResponseDTO.class))).thenReturn(idResponseWithStatus("DEACTIVATED"));
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), eq(EXISTING_UIN), any(), eq(true)))
-                .thenReturn(emptyIdResponse());
+                .thenThrow(new ApisResourceAccessException("Null response from idrepoUpdateDraftV2 for id " + REG_ID));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
-        assertFalse(result.getIsValid());
-        assertFalse(result.getInternalError());
-        assertLastUpdatedSubStatus(StatusUtil.UIN_REACTIVATION_FAILED.getCode());
+        assertTrue(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.API_RESOUCE_ACCESS_FAILED.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.REPROCESS.toString());
     }
 
     @Test
@@ -540,20 +612,21 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testDeactivatedPacketNullResponseFromUpdate() throws Exception {
+    public void testDeactivatedPacketNullResponseFromUpdate_MarksReprocess() throws Exception {
         messageDTO.setReg_type("DEACTIVATED");
         registrationStatusDto.setRegistrationType("DEACTIVATED");
         when(utility.getUIn(anyString(), anyString(), any(ProviderStageName.class))).thenReturn(EXISTING_UIN);
         when(registrationProcessorRestClientService.getApi(eq(ApiName.IDREPOGETIDBYUIN), any(), anyString(), anyString(),
                 eq(IdResponseDTO.class))).thenReturn(idResponseWithStatus("ACTIVATED"));
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), eq(EXISTING_UIN), any(), eq(true)))
-                .thenReturn(emptyIdResponse());
+                .thenThrow(new ApisResourceAccessException("Null response from idrepoUpdateDraftV2 for id " + REG_ID));
 
         MessageDTO result = createDraftStage.process(messageDTO);
 
-        assertFalse(result.getIsValid());
-        assertFalse(result.getInternalError());
-        assertLastUpdatedSubStatus(StatusUtil.UIN_DEACTIVATION_FAILED.getCode());
+        assertTrue(result.getIsValid());
+        assertTrue(result.getInternalError());
+        assertLastUpdatedSubStatus(StatusUtil.API_RESOUCE_ACCESS_FAILED.getCode());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.REPROCESS.toString());
     }
 
     @Test
@@ -603,6 +676,8 @@ public class CreateDraftStageTest {
         assertTrue(result.getInternalError());
         verify(idrepoDraftService, never()).idrepoUpdateDraftV2(anyString(), any(), any(), any());
         assertLastUpdatedSubStatus(StatusUtil.CREATE_DRAFT_UNABLE_TO_CHECK_STALE.getCode());
+        assertLastUpdatedStatusCode(RegistrationStatusCode.PROCESSING.toString());
+        assertLastUpdatedTransactionStatus(RegistrationTransactionStatusCode.REPROCESS.toString());
     }
 
     @Test
@@ -622,7 +697,7 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testNewStaleReprocessCaughtAtCheck1() throws Exception {
+    public void testNewStalePacketMarksObsoleted() throws Exception {
         messageDTO.setReg_type("NEW");
         when(utility.isLatestPacket(nullable(String.class), nullable(String.class), anyString())).thenReturn(StaleCheckResult.STALE);
 
@@ -647,7 +722,7 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testActivatedStaleReprocessCaughtAtCheck1() throws Exception {
+    public void testActivatedStalePacketMarksObsoleted() throws Exception {
         messageDTO.setReg_type("ACTIVATED");
         registrationStatusDto.setRegistrationType("ACTIVATED");
         when(utility.getUIn(anyString(), anyString(), any(ProviderStageName.class))).thenReturn(EXISTING_UIN);
@@ -702,15 +777,15 @@ public class CreateDraftStageTest {
     }
 
     @Test
-    public void testFailureUsesCreateDraftPlatformErrorCode() throws Exception {
+    public void testFailureUsesIdrepoDraftExceptionPlatformErrorCode() throws Exception {
         messageDTO.setReg_type("NEW");
         when(idrepoDraftService.idrepoUpdateDraftV2(anyString(), any(), any(), any()))
-                .thenReturn(failedIdResponseWithErrorCode("IDR-IDC-999"));
+                .thenThrow(new IdrepoDraftException("IDR-IDC-002", "Invalid Input Parameter"));
 
         createDraftStage.process(messageDTO);
 
         verify(registrationStatusService).updateRegistrationStatus(statusCaptor.capture(),
-                eq(PlatformErrorMessages.RPR_CDS_DRAFT_CREATION_FAILED.getCode()), anyString());
+                eq(PlatformErrorMessages.IDREPO_DRAFT_EXCEPTION.getCode()), anyString());
     }
 
     // -----------------------------------------------------------------------
@@ -737,23 +812,16 @@ public class CreateDraftStageTest {
         return dto;
     }
 
-    private static IdResponseDTO emptyIdResponse() {
-        return new IdResponseDTO();
-    }
-
-    private static IdResponseDTO failedIdResponseWithErrorCode(String errorCode) {
-        IdResponseDTO dto = new IdResponseDTO();
-        ErrorDTO error = new ErrorDTO();
-        error.setErrorCode(errorCode);
-        error.setMessage("ID Repo error");
-        dto.setErrors(new ArrayList<>(Collections.singletonList(error)));
-        return dto;
-    }
-
     private void assertLastUpdatedSubStatus(String expectedSubStatusCode) {
         verify(registrationStatusService).updateRegistrationStatus(statusCaptor.capture(),
                 nullable(String.class), anyString());
         assertEquals(expectedSubStatusCode, statusCaptor.getValue().getSubStatusCode());
+    }
+
+    private void assertLastUpdatedTransactionStatus(String expectedTransactionStatus) {
+        verify(registrationStatusService).updateRegistrationStatus(statusCaptor.capture(),
+                nullable(String.class), anyString());
+        assertEquals(expectedTransactionStatus, statusCaptor.getValue().getLatestTransactionStatusCode());
     }
 
     private void assertLastUpdatedStatusCode(String expectedStatusCode) {
